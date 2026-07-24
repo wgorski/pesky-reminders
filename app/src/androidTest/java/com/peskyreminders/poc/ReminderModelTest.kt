@@ -1,6 +1,7 @@
 package com.peskyreminders.poc
 
 import android.Manifest
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
@@ -75,5 +76,15 @@ class ReminderModelTest {
         assertNotNull("precondition: posted", active())
         deliver(ReminderContract.ACTION_DONE)
         assertNull("Done must clear the notification", active())
+    }
+
+    @Test fun schedule_sets_an_exact_alarm_clock() {
+        val alarmManager = context.getSystemService(AlarmManager::class.java)
+        val target = System.currentTimeMillis() + 60_000L
+        ReminderScheduler.schedule(context, "Buy milk", target)
+        val next = alarmManager.nextAlarmClock
+        assertNotNull("an alarm clock must be scheduled", next)
+        val delta = Math.abs(next!!.triggerTime - target)
+        assertTrue("alarm within 2s of target (delta=$delta ms)", delta < 2_000L)
     }
 }
