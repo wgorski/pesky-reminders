@@ -87,4 +87,16 @@ class ReminderModelTest {
         val delta = Math.abs(next!!.triggerTime - target)
         assertTrue("alarm within 2s of target (delta=$delta ms)", delta < 2_000L)
     }
+
+    @Test fun snooze_clears_and_reschedules_five_minutes_out() {
+        val alarmManager = context.getSystemService(AlarmManager::class.java)
+        deliver(ReminderContract.ACTION_FIRE)
+        assertNotNull("precondition: posted", active())
+        deliver(ReminderContract.ACTION_SNOOZE)
+        assertNull("snooze clears the current notification", active())
+        val next = alarmManager.nextAlarmClock
+        assertNotNull("snooze must schedule a new alarm", next)
+        val deltaMin = (next!!.triggerTime - System.currentTimeMillis()) / 60_000.0
+        assertTrue("alarm ~5 min out (was $deltaMin min)", deltaMin in 4.0..5.5)
+    }
 }

@@ -12,6 +12,14 @@ class ReminderReceiver : BroadcastReceiver() {
             ReminderContract.ACTION_FIRE -> ReminderNotifier.post(context, text)
             ReminderContract.ACTION_REPOST -> ReminderNotifier.post(context, text)
             ReminderContract.ACTION_DONE -> ReminderNotifier.cancel(context)
+            ReminderContract.ACTION_SNOOZE -> {
+                ReminderNotifier.cancel(context)
+                ReminderScheduler.schedule(
+                    context,
+                    text,
+                    ReminderContract.snoozeTriggerAtMillis(System.currentTimeMillis()),
+                )
+            }
         }
     }
 }
