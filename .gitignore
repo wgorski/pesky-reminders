@@ -7,3 +7,6 @@ build/
 /captures/
 .DS_Store
 /app/release/
+
+# SDD scratch
+.superpowers/
