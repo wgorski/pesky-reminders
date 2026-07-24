@@ -16,7 +16,12 @@
 - AGP `8.7.3`, Kotlin `2.0.21`, Gradle wrapper `8.11.1`, Compose BOM `2024.10.01`.
 - No third-party libraries beyond AndroidX + Compose + AndroidX Test.
 - Snooze interval is exactly 5 minutes (`5 * 60 * 1000` ms). Do not shorten it in product code.
-- Un-dismissability mechanism is `setOngoing(true)` + a `deleteIntent` that re-posts. No foreground service, no full-screen intent.
+- Un-dismissability mechanism is `setOngoing(true)` + a `deleteIntent` that re-posts. No foreground service, no full-screen intent. **On API 35 the ongoing flag does NOT block an individual swipe** (Android 14+ change); it blocks "clear all" and swipe-while-locked. The delete-intent re-post is what defeats a swipe. `NotificationManager.cancel()` (used by Snooze/Done) does not fire the delete-intent, so those do not re-post.
+- **Shell env does not persist between Bash calls, and `adb`/`emulator`/`sdkmanager` are not on the default PATH.** Every command block that uses them MUST begin with this preamble (or use absolute paths):
+  ```bash
+  export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
+  export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+  ```
 - One reminder at a time: fixed `NOTIFICATION_ID` and alarm request code; re-scheduling replaces the previous.
 - Emulator is Apple-Silicon native: system image `system-images;android-35;google_apis;arm64-v8a`.
 - `ANDROID_HOME` for this machine: `/opt/homebrew/share/android-commandlinetools` (set by the Homebrew cask in Task 1). `local.properties` must contain `sdk.dir=/opt/homebrew/share/android-commandlinetools` so Gradle finds the SDK without relying on shell env.
@@ -52,11 +57,13 @@ Expected: `sdkmanager --sdk_root="$ANDROID_HOME" --list_installed` lists all fiv
 - [ ] **Step 3: Create an AVD**
 
 ```bash
-echo no | avdmanager --clear-cache create avd -n pesky \
+echo no | avdmanager --clear-cache create avd -n pesky --force \
   -k "system-images;android-35;google_apis;arm64-v8a" -d pixel_6
 avdmanager list avd
 ```
-Expected: `avdmanager list avd` shows `Name: pesky`.
+`--force` overwrites an AVD of the same name if one already exists (the SDK and
+an AVD named `pesky` may already be present on this machine — earlier steps are
+then no-ops). Expected: `avdmanager list avd` shows `Name: pesky`.
 
 - [ ] **Step 4: Boot the emulator headless (background) and wait for boot**
 
@@ -66,7 +73,7 @@ emulator -avd pesky -no-window -no-audio -no-boot-anim -no-snapshot \
 adb wait-for-device
 # poll until fully booted
 until [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; do sleep 2; done
-adb shell input keyevent 82   # dismiss keyguard
+adb shell wm dismiss-keyguard   # unlock — ongoing notifications are non-swipeable while locked
 ```
 (Run the `emulator` line via the Bash tool's `run_in_background`.)
 
@@ -96,21 +103,7 @@ Expected: `adb devices` shows `emulator-5554   device`; boot prop prints `1`.
 **Interfaces:**
 - Produces: `MainActivity` (a `ComponentActivity` in package `com.peskyreminders.poc`) — later tasks target it with a `PendingIntent`. The `:app` module with namespace `com.peskyreminders.poc`, applicationId `com.peskyreminders.poc`.
 
-- [ ] **Step 1: Generate the Gradle wrapper pinned to 8.11.1**
-
-```bash
-cd /Users/ket/dev/ai/pesky-reminders
-gradle wrapper --gradle-version 8.11.1 --distribution-type bin
-```
-Expected: creates `gradlew`, `gradle/wrapper/gradle-wrapper.jar`, `gradle-wrapper.properties`.
-
-- [ ] **Step 2: Write `local.properties`**
-
-```properties
-sdk.dir=/opt/homebrew/share/android-commandlinetools
-```
-
-- [ ] **Step 3: Write `settings.gradle.kts`**
+- [ ] **Step 1: Write `settings.gradle.kts`**
 
 ```kotlin
 pluginManagement {
@@ -131,7 +124,39 @@ rootProject.name = "PeskyReminders"
 include(":app")
 ```
 
-- [ ] **Step 4: Write root `build.gradle.kts`**
+- [ ] **Step 2: Write `gradle.properties`**
+
+```properties
+org.gradle.jvmargs=-Xmx2048m
+android.useAndroidX=true
+kotlin.code.style=official
+```
+
+- [ ] **Step 3: Write `local.properties` and create the app module dir**
+
+```properties
+sdk.dir=/opt/homebrew/share/android-commandlinetools
+```
+Then create the module directory so the wrapper step can evaluate `include(":app")`:
+```bash
+mkdir -p app
+```
+
+- [ ] **Step 4: Generate the Gradle wrapper pinned to 8.11.1**
+
+The system Gradle is 9.5.1, which refuses to run in a directory with no settings
+file and cannot configure AGP 8.7.3. Generate the wrapper only AFTER
+`settings.gradle.kts` and the `app/` dir exist, and BEFORE any AGP build scripts
+are written (so the wrapper task never triggers configuration of the Android
+plugin). All later Gradle commands use `./gradlew` (8.11.1), never system `gradle`.
+
+```bash
+cd /Users/ket/dev/ai/pesky-reminders
+gradle wrapper --gradle-version 8.11.1 --distribution-type bin
+```
+Expected: creates `gradlew`, `gradle/wrapper/gradle-wrapper.jar`, and `gradle-wrapper.properties` pinned to `gradle-8.11.1-bin.zip`.
+
+- [ ] **Step 5: Write root `build.gradle.kts`**
 
 ```kotlin
 plugins {
@@ -139,14 +164,6 @@ plugins {
     id("org.jetbrains.kotlin.android") version "2.0.21" apply false
     id("org.jetbrains.kotlin.plugin.compose") version "2.0.21" apply false
 }
-```
-
-- [ ] **Step 5: Write `gradle.properties`**
-
-```properties
-org.gradle.jvmargs=-Xmx2048m
-android.useAndroidX=true
-kotlin.code.style=official
 ```
 
 - [ ] **Step 6: Write `app/build.gradle.kts`**
@@ -193,6 +210,7 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
 
+    androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test:rules:1.6.1")
@@ -266,8 +284,10 @@ Expected: `BUILD SUCCESSFUL`. (First run downloads AGP/Compose — may take minu
 
 - [ ] **Step 10: Install, launch, screenshot**
 
-Run:
+Run (the export preamble is required — see Global Constraints):
 ```bash
+export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n com.peskyreminders.poc/.MainActivity
 sleep 2
@@ -440,19 +460,24 @@ class ReminderModelTest {
         val n = active()
         assertNotNull("expected a posted notification", n)
         assertTrue(
-            "notification must be ongoing (non-swipeable)",
+            "ongoing flag must be set (blocks clear-all + swipe-while-locked)",
             (n!!.notification.flags and Notification.FLAG_ONGOING_EVENT) != 0
         )
         assertEquals("Snooze + Done", 2, n.notification.actions.size)
     }
 
-    @Test fun repost_brings_it_back_after_dismissal() {
+    @Test fun dismissing_notification_triggers_repost() {
         deliver(ReminderContract.ACTION_FIRE)
-        ReminderNotifier.cancel(context)
-        Thread.sleep(200)
-        assertNull("precondition: cleared", active())
-        deliver(ReminderContract.ACTION_REPOST)
-        assertNotNull("repost must restore the notification", active())
+        val posted = active()
+        assertNotNull("precondition: posted", posted)
+        // Fire the notification's OWN delete-intent — this is exactly what the OS
+        // sends when the user swipes the notification away (on Android 14+ the
+        // ongoing flag no longer blocks the swipe, so this path is what matters).
+        // We do NOT call ReminderNotifier.cancel() + ACTION_REPOST by hand, because
+        // that would bypass the real delete-intent wiring and prove nothing.
+        posted!!.notification.deleteIntent.send()
+        Thread.sleep(400)
+        assertNotNull("dismissal must immediately re-post the notification", active())
     }
 
     @Test fun done_clears_it() {
@@ -466,7 +491,7 @@ class ReminderModelTest {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `./gradlew :app:connectedDebugAndroidTest --tests "com.peskyreminders.poc.ReminderModelTest"`
+Run: `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.peskyreminders.poc.ReminderModelTest`
 Expected: FAIL — `Unresolved reference: ReminderNotifier` / `ReminderReceiver`.
 
 - [ ] **Step 3: Write `ReminderNotifier.kt`**
@@ -569,8 +594,8 @@ Add inside `<application>`, after the `<activity>` block:
 
 - [ ] **Step 6: Run the instrumented tests to verify they pass**
 
-Run: `./gradlew :app:connectedDebugAndroidTest --tests "com.peskyreminders.poc.ReminderModelTest"`
-Expected: PASS — `fire_posts_ongoing_notification_with_two_actions`, `repost_brings_it_back_after_dismissal`, `done_clears_it`. (The snooze test does not exist yet.)
+Run: `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.peskyreminders.poc.ReminderModelTest`
+Expected: PASS — `fire_posts_ongoing_notification_with_two_actions`, `dismissing_notification_triggers_repost`, `done_clears_it`. (The scheduler and snooze tests do not exist yet.)
 
 - [ ] **Step 7: Commit**
 
@@ -613,7 +638,7 @@ Add this test method inside the class:
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `./gradlew :app:connectedDebugAndroidTest --tests "com.peskyreminders.poc.ReminderModelTest#schedule_sets_an_exact_alarm_clock"`
+Run: `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.peskyreminders.poc.ReminderModelTest#schedule_sets_an_exact_alarm_clock`
 Expected: FAIL — `Unresolved reference: ReminderScheduler`.
 
 - [ ] **Step 3: Write `ReminderScheduler.kt`**
@@ -662,7 +687,7 @@ object ReminderScheduler {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `./gradlew :app:connectedDebugAndroidTest --tests "com.peskyreminders.poc.ReminderModelTest#schedule_sets_an_exact_alarm_clock"`
+Run: `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.peskyreminders.poc.ReminderModelTest#schedule_sets_an_exact_alarm_clock`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -702,7 +727,7 @@ git commit -m "feat: ReminderScheduler exact alarm via setAlarmClock"
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `./gradlew :app:connectedDebugAndroidTest --tests "com.peskyreminders.poc.ReminderModelTest#snooze_clears_and_reschedules_five_minutes_out"`
+Run: `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.peskyreminders.poc.ReminderModelTest#snooze_clears_and_reschedules_five_minutes_out`
 Expected: FAIL — notification still present / `nextAlarmClock` null (SNOOZE not handled).
 
 - [ ] **Step 3: Add the SNOOZE branch to `ReminderReceiver.onReceive`**
@@ -726,7 +751,7 @@ Replace the `when` block with:
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `./gradlew :app:connectedDebugAndroidTest --tests "com.peskyreminders.poc.ReminderModelTest#snooze_clears_and_reschedules_five_minutes_out"`
+Run: `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.peskyreminders.poc.ReminderModelTest#snooze_clears_and_reschedules_five_minutes_out`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
@@ -828,8 +853,10 @@ private fun ReminderScreen(onSchedule: (String, Long) -> Unit) {
 
 - [ ] **Step 2: Build and install**
 
-Run:
+Run (preamble required — see Global Constraints):
 ```bash
+export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
 ./gradlew :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
@@ -837,8 +864,12 @@ Expected: `BUILD SUCCESSFUL`; install `Success`.
 
 - [ ] **Step 3: Launch and screenshot the UI**
 
-Run:
+Grant the notification permission up front (via `pm grant`) so the runtime
+permission dialog does not overlay the screenshot:
 ```bash
+export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+adb shell pm grant com.peskyreminders.poc android.permission.POST_NOTIFICATIONS
 adb shell am start -n com.peskyreminders.poc/.MainActivity
 sleep 2
 adb exec-out screencap -p > /tmp/pr-ui.png
@@ -869,42 +900,64 @@ Expected: PASS (ReminderContractTest, 2 tests).
 - [ ] **Step 2: Run the full instrumented suite**
 
 Run: `./gradlew :app:connectedDebugAndroidTest`
-Expected: PASS — all four `ReminderModelTest` tests green. This is the scriptable proof of the model (ongoing flag present, repost restores, done clears, snooze reschedules +5 min).
+Expected: PASS — all **five** `ReminderModelTest` tests green:
+`fire_posts_ongoing_notification_with_two_actions`,
+`dismissing_notification_triggers_repost` (fires the notification's own
+delete-intent — the authoritative, repeatable proof of un-dismissability),
+`done_clears_it`, `schedule_sets_an_exact_alarm_clock`,
+`snooze_clears_and_reschedules_five_minutes_out`.
 
-- [ ] **Step 3: Manual demo — schedule and fire**
+- [ ] **Step 3: Reset app state, grant permission, schedule and fire**
 
+`connectedDebugAndroidTest` may uninstall the app and leaves stray alarms, so
+reset to a clean, granted state first. (Preamble required — see Global Constraints.)
 ```bash
+export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell pm clear com.peskyreminders.poc                 # wipe data + cancel any stray alarms
+adb shell pm grant com.peskyreminders.poc android.permission.POST_NOTIFICATIONS
+adb shell wm dismiss-keyguard                             # must be unlocked for the swipe test
 adb shell am start -n com.peskyreminders.poc/.MainActivity
-# leave default "Buy milk" / 15s, tap Schedule (coords from screenshot):
-adb exec-out screencap -p > /tmp/pr-demo-1-screen.png   # confirm Schedule button location
-adb shell input tap <x> <y>                              # tap Schedule (read coords from screenshot)
+sleep 2
+adb exec-out screencap -p > /tmp/pr-demo-1-screen.png     # read Schedule button coords from this
+adb shell input tap <x> <y>                               # tap Schedule (coords from screenshot)
 sleep 16
 adb shell cmd statusbar expand-notifications
 sleep 1
-adb exec-out screencap -p > /tmp/pr-demo-2-fired.png     # notification visible
+adb exec-out screencap -p > /tmp/pr-demo-2-fired.png      # notification visible
 ```
 Expected: `/tmp/pr-demo-2-fired.png` shows the "Pesky Reminder / Buy milk" notification with Snooze + Done.
 
-- [ ] **Step 4: Prove un-dismissability**
+- [ ] **Step 4: Prove un-dismissability by actually swiping it away (spec's core claim)**
 
 ```bash
-# Confirm the OS marks it ongoing (blocks swipe/clear-all):
-adb shell dumpsys notification --noredact | grep -A3 -i "pesky\|FLAG_ONGOING" | head -40
-```
-Expected: the posted notification shows `FLAG_ONGOING_EVENT`. Combined with the passing `repost_brings_it_back_after_dismissal` instrumented test, this demonstrates the notification cannot be cleared except via its own actions.
-
-- [ ] **Step 5: Prove Done clears it**
-
-```bash
+export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+# Read the notification row's Y from /tmp/pr-demo-2-fired.png, then swipe it right to dismiss:
+adb shell input swipe <x_left> <y_row> <x_right> <y_row> 200
+sleep 1
 adb shell cmd statusbar expand-notifications
 sleep 1
-adb exec-out screencap -p > /tmp/pr-demo-3-actions.png   # locate the Done button
-adb shell input tap <x> <y>                               # tap Done
-sleep 1
-adb exec-out screencap -p > /tmp/pr-demo-4-done.png       # notification gone
-adb shell dumpsys notification --noredact | grep -i pesky | head -5
+adb exec-out screencap -p > /tmp/pr-demo-3-after-swipe.png   # notification is BACK (re-posted)
+adb shell dumpsys notification --noredact | grep -i "pesky\|Buy milk" | head -10
 ```
-Expected: after Done, no `pesky` notification remains.
+Expected: after the swipe the notification **reappears** — `/tmp/pr-demo-3-after-swipe.png` still shows it and the `dumpsys` grep still finds it. This is the OS delete-intent → receiver → re-post chain in action (the same chain proven repeatably by `dismissing_notification_triggers_repost`). The ongoing flag additionally blocks "clear all" and swipe-while-locked, but the re-post is what defeats an ordinary swipe on API 35.
+
+- [ ] **Step 5: Prove Done clears it for good**
+
+```bash
+export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+adb shell cmd statusbar expand-notifications
+sleep 1
+adb exec-out screencap -p > /tmp/pr-demo-4-actions.png    # locate the Done button
+adb shell input tap <x> <y>                               # tap Done (coords from screenshot)
+sleep 1
+adb exec-out screencap -p > /tmp/pr-demo-5-done.png       # notification gone
+adb shell dumpsys notification --noredact | grep -i "pesky\|Buy milk" | head -5
+```
+Expected: after Done, no reminder notification remains, and it does **not** re-post (Done calls `cancel()`, which does not fire the delete-intent).
 
 - [ ] **Step 6: Final commit (artifacts + notes)**
 
@@ -918,6 +971,7 @@ git commit -m "docs: POC verification artifacts and notes"
 ## Notes for the implementer
 
 - If a version listed in Global Constraints fails to resolve (SDK licensing, Compose/AGP mismatch), adjust to the nearest compatible published version and record the change — do not silently skip a task's verification.
-- `dumpsys notification` output format varies by Android version; the goal of Step 4 is to confirm the `FLAG_ONGOING_EVENT` flag is set on our notification — grep accordingly.
+- `dumpsys notification` output format varies by Android version; the goal is to confirm our reminder notification is (or is not) present — grep for `pesky` / `Buy milk` accordingly.
+- The authoritative, repeatable proof of un-dismissability is the instrumented test `dismissing_notification_triggers_repost` (Task 4), which fires the notification's real delete-intent. Task 8's adb swipe (Step 4) is the human-facing demonstration of the same chain; if the shade swipe coordinates prove flaky on the headless emulator, the instrumented test still stands as the proof.
 - Tapping notification action buttons via `adb shell input tap` needs coordinates read from the screenshot taken the line before; there is no stable resource id for shade taps.
 - The instrumented tests (`ReminderModelTest`) are the authoritative, repeatable proof. The screenshots are the human-facing demonstration.

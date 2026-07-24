@@ -61,7 +61,9 @@ The hub. Dispatches on intent action:
   for now + 5 minutes (the real product snooze interval).
 - **`ACTION_DONE`**: cancels the notification. It does not come back.
 - **`ACTION_REPOST`** (fired by the notification's delete-intent): immediately
-  re-posts the notification. This is what defeats swipe-to-dismiss / clear-all.
+  re-posts the notification. On Android 14+ an individual swipe *is* allowed by
+  the OS but triggers this delete-intent, so the notification reappears at once —
+  this re-post is what actually defeats a swipe.
 
 All handlers are short and synchronous (post/cancel/schedule only), so no
 `goAsync()` or foreground service is required.
@@ -69,12 +71,16 @@ All handlers are short and synchronous (post/cancel/schedule only), so no
 ### 4. `ReminderNotifier`
 Builds and posts the notification:
 - High-importance notification channel (heads-up capable).
-- `setOngoing(true)` — blocks swipe-to-dismiss and "clear all".
+- `setOngoing(true)` — blocks "clear all" and swipe-while-locked. Note: on
+  Android 14+ (API 34+) the ongoing flag no longer blocks an *individual* swipe;
+  the delete-intent re-post (below) is what covers that case.
 - Two action buttons: **Snooze** (→ `ACTION_SNOOZE`) and **Done** (→ `ACTION_DONE`),
   each a `PendingIntent` (broadcast) to `ReminderReceiver`.
-- `setDeleteIntent(...)` → `ACTION_REPOST`. If the OS or user ever manages to
-  clear the notification, this re-posts it. The `setOngoing` + `setDeleteIntent`
-  pairing is the mechanism the POC is proving.
+- `setDeleteIntent(...)` → `ACTION_REPOST`. When the notification is dismissed
+  (swipe, clear-all, or a listener), the OS fires this delete-intent and we
+  immediately re-post. The `setOngoing` + `setDeleteIntent` pairing is the
+  mechanism the POC is proving — only Snooze/Done (which call `cancel()`, and
+  `cancel()` does **not** fire the delete-intent) can actually remove it.
 - `setAutoCancel(false)` so tapping the body does not dismiss it.
 
 ## Data flow
@@ -120,8 +126,20 @@ Steps, with a screenshot at each:
 Success = steps 4 and 6 both hold: cannot be dismissed except via Done, and Snooze
 reschedules correctly.
 
+The repeatable, scriptable proof of step 4 is an instrumented test that fires the
+posted notification's **own delete-intent** (exactly what the OS sends on a user
+swipe) and asserts the notification reappears — this exercises the real
+delete-intent → receiver → re-post chain rather than a stand-in. The adb swipe in
+the manual demo is the human-facing version of the same thing.
+
 ## Risks / notes
 
+- **Android 14+ (API 34+) changed ongoing-notification behavior:** the ongoing
+  flag no longer blocks an individual swipe (it still blocks "clear all" and
+  swipe-while-locked). The POC therefore does not rely on the flag to stop a
+  swipe — it relies on the delete-intent re-post. The manual swipe demo must be
+  run on an **unlocked** screen, since a locked screen would block the swipe and
+  mask the re-post behavior.
 - On Android 14+ some OEMs are aggressive about backgrounded broadcast receivers.
   The `ACTION_REPOST` re-post happens synchronously inside `onReceive`, so it is
   not affected by background-start limits the way launching an activity/service
