@@ -37,9 +37,9 @@ deliberately out of scope. This is a proof of concept for the notification model
 ### 1. `MainActivity` (Compose)
 The single screen:
 - A text field for the reminder text (default e.g. "Buy milk").
-- A control to pick the fire time. For the POC this is a simple offset picker
-  (e.g. "remind me in N seconds/minutes") **and/or** a time-of-day picker — an
-  offset picker is preferred because it makes verification fast and deterministic.
+- A control to pick the fire time. For the POC this is a simple **offset picker**
+  ("remind me in N seconds / minutes"), chosen over a time-of-day picker because it
+  makes scheduling fast and deterministic to verify on the emulator.
 - A **Schedule** button that calls `ReminderScheduler.schedule(...)`.
 - On first launch (API 33+) requests the `POST_NOTIFICATIONS` runtime permission.
 - Shows simple inline status text ("Scheduled for HH:MM:SS", or a permission hint).
