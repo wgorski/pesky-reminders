@@ -5,7 +5,8 @@ An Android app for reminders you **cannot swipe away**.
 You add a task and pick when to be nagged. At that time a notification fires that
 you can't dismiss. The only ways to clear it are the notification's own two actions:
 
-- **Snooze** — dismisses it now and brings it back in 5 minutes.
+- **Snooze** — opens a picker: 5 / 15 / 30 / 60 minutes, or a wheel of
+  quarter-hours up to 3 hours.
 - **Done** — clears it for good.
 
 ## The app
@@ -21,12 +22,16 @@ you can't dismiss. The only ways to clear it are the notification's own two acti
   chips (*Later today*, *Tonight*, *This weekend*, …), three scroll wheels
   (day / hour / minute), or a month calendar with an hour stepper and time-of-day
   chips. Plus a repeat rule: Once / Daily / Weekly / Monthly.
+- **Settings** — a reminder you ignore keeps buzzing until you snooze it or tick it
+  off. That is on by default every 5 minutes, and both the on/off and the interval
+  (1–180 minutes) are configurable from the sliders icon in the header.
 - Tasks persist across restarts (SharedPreferences), and each one gets its own
   independent alarm and notification.
 
 The UI is a port of the "Pesky Reminders v2" Claude Design canvas — warm near-black
-surfaces, one orange accent, Bricolage Grotesque for the display type and DM Sans for
-everything else.
+surfaces, Bricolage Grotesque for the display type and DM Sans for everything else.
+The single accent is a crimson (`#D12744`) sampled from an "uscita / exit" sign; the
+design's original orange was swapped for it.
 
 ## Does the notification model actually work?
 
@@ -94,7 +99,7 @@ try to swipe it away — it comes back. Tap **Done** to clear it.
 ## Test
 
 ```bash
-./gradlew :app:testDebugUnitTest          # 50 deterministic tests, JVM only, ~6s
+./gradlew :app:testDebugUnitTest          # 93 deterministic tests, JVM only, ~7s
 
 # Instrumented tests need a running emulator/device.
 # (connected-test tasks use the property form, not --tests)

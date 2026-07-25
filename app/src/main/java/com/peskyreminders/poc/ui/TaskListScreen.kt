@@ -56,6 +56,7 @@ fun TaskListScreen(
     onToggleDoneSection: () -> Unit,
     onToggleTask: (Int) -> Unit,
     onAdd: () -> Unit,
+    onOpenSettings: () -> Unit = {},
 ) {
     val active = tasks.filterNot { it.done }.sortedBy { it.dueMillis }
     val overdue = active.filter { it.dueMillis < nowMillis }
@@ -64,7 +65,7 @@ fun TaskListScreen(
 
     Box(Modifier.fillMaxSize().background(PeskyColors.Screen)) {
         Column(Modifier.fillMaxSize()) {
-            Header(nowMillis)
+            Header(nowMillis, onOpenSettings)
             LazyColumn(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 120.dp),
@@ -95,12 +96,12 @@ fun TaskListScreen(
 }
 
 @Composable
-private fun Header(nowMillis: Long) {
+private fun Header(nowMillis: Long, onOpenSettings: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = 6.dp),
+            .padding(start = 22.dp, end = 16.dp, top = 22.dp, bottom = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -111,7 +112,26 @@ private fun Header(nowMillis: Long) {
             },
             style = PeskyType.Logo,
         )
-        Text(TaskTime.todayLabel(nowMillis), style = PeskyType.Stamp)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(TaskTime.todayLabel(nowMillis), style = PeskyType.Stamp)
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .pressable(scale = 0.9f, onClick = onOpenSettings)
+                    .clip(CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = PeskyIcons.Sliders,
+                    contentDescription = "Settings",
+                    tint = PeskyColors.TextMuted,
+                    modifier = Modifier.size(17.dp),
+                )
+            }
+        }
     }
 }
 
@@ -366,7 +386,7 @@ private fun AddButtonBar(onAdd: () -> Unit, modifier: Modifier = Modifier) {
             Icon(
                 imageVector = PeskyIcons.Plus,
                 contentDescription = "Add a task",
-                tint = PeskyColors.Screen,
+                tint = PeskyColors.Text,
                 modifier = Modifier.size(22.dp),
             )
         }

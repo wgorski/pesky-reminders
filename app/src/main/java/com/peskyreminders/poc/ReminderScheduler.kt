@@ -19,6 +19,37 @@ object ReminderScheduler {
             .cancel(firePendingIntent(context, taskId))
     }
 
+    /**
+     * The next buzz for a notification that is being ignored.
+     *
+     * Also an alarm clock rather than [AlarmManager.setExactAndAllowWhileIdle],
+     * which Doze throttles to roughly once every nine minutes — a five-minute
+     * nag would quietly slip.
+     */
+    fun scheduleNag(context: Context, taskId: Int, atMillis: Long) {
+        val alarmManager = context.getSystemService(AlarmManager::class.java)
+        val info = AlarmManager.AlarmClockInfo(atMillis, showIntent(context))
+        alarmManager.setAlarmClock(info, nagPendingIntent(context, taskId))
+    }
+
+    fun cancelNag(context: Context, taskId: Int) {
+        context.getSystemService(AlarmManager::class.java)
+            .cancel(nagPendingIntent(context, taskId))
+    }
+
+    private fun nagPendingIntent(context: Context, taskId: Int): PendingIntent {
+        val intent = Intent(context, ReminderReceiver::class.java).apply {
+            action = ReminderContract.ACTION_NAG
+            putExtra(ReminderContract.EXTRA_TASK_ID, taskId)
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            ReminderContract.requestCode(taskId, ReminderContract.SLOT_NAG),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
     private fun firePendingIntent(context: Context, taskId: Int): PendingIntent {
         val intent = Intent(context, ReminderReceiver::class.java).apply {
             action = ReminderContract.ACTION_FIRE

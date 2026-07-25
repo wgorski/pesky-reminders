@@ -72,6 +72,19 @@ object PeskyIcons {
         horizontalLineTo(3f)
     }
 
+    /** Settings — sliders rather than a gear: this screen tunes one dial. */
+    val Sliders: ImageVector = stroked("sliders") {
+        moveTo(21f, 4f); horizontalLineTo(14f)
+        moveTo(10f, 4f); horizontalLineTo(3f)
+        moveTo(21f, 12f); horizontalLineTo(12f)
+        moveTo(8f, 12f); horizontalLineTo(3f)
+        moveTo(21f, 20f); horizontalLineTo(16f)
+        moveTo(12f, 20f); horizontalLineTo(3f)
+        moveTo(14f, 2f); verticalLineTo(6f)
+        moveTo(8f, 10f); verticalLineTo(14f)
+        moveTo(16f, 18f); verticalLineTo(22f)
+    }
+
     /** The FAB glyph — heavier stroke than the icon set, per the design. */
     val Plus: ImageVector = stroked("plus", width = 3f) {
         moveTo(12f, 5f)

@@ -48,10 +48,12 @@ class ReminderModelTest {
 
     @Before fun seedOneTask() {
         TaskStore.clear(context)
+        Settings.clear(context)
         // Ids restart at 1 after a clear, so this drops anything a previous test
         // left armed — without it `nextAlarmClock` reports a stale alarm.
         for (id in 1..20) {
             ReminderScheduler.cancel(context, id)
+            ReminderScheduler.cancelNag(context, id)
             ReminderNotifier.cancel(context, id)
         }
         taskId = TaskStore.add(
@@ -134,12 +136,198 @@ class ReminderModelTest {
         val alarmManager = context.getSystemService(AlarmManager::class.java)
         deliver(ReminderContract.ACTION_FIRE)
         assertNotNull("precondition: posted", active())
-        deliver(ReminderContract.ACTION_SNOOZE)
+        Reminders.snooze(context, taskId)
+        Thread.sleep(300)
         assertNull("snooze clears the current notification", active())
         val next = alarmManager.nextAlarmClock
         assertNotNull("snooze must schedule a new alarm", next)
         val deltaMin = (next!!.triggerTime - System.currentTimeMillis()) / 60_000.0
         assertTrue("alarm ~5 min out (was $deltaMin min)", deltaMin in 4.0..5.5)
+    }
+
+    /**
+     * The Snooze action must open the picker activity itself. Routing it through
+     * a receiver that then starts an activity is a notification trampoline, which
+     * Android 12+ blocks outright — the tap would do nothing at all.
+     */
+    @Test fun the_snooze_action_opens_an_activity_not_a_broadcast() {
+        deliver(ReminderContract.ACTION_FIRE)
+        val n = active()
+        assertNotNull("precondition: posted", n)
+        val snooze = n!!.notification.actions.first { it.title == "Snooze" }
+        assertTrue("Snooze must be an activity PendingIntent", snooze.actionIntent.isActivity)
+
+        val done = n.notification.actions.first { it.title == "Done" }
+        assertTrue("Done stays a broadcast — it shows no UI", done.actionIntent.isBroadcast)
+    }
+
+    @Test fun a_chosen_duration_is_what_the_reminder_comes_back_at() {
+        deliver(ReminderContract.ACTION_FIRE)
+        assertNotNull("precondition: posted", active())
+
+        Reminders.snooze(context, taskId, 45)
+        Thread.sleep(300)
+
+        assertNull("snoozing clears the notification", active())
+        val minutes = minutesUntilNextAlarm()
+        assertTrue("back in ~45 min (was $minutes min)", minutes in 44.0..45.5)
+        val stored = stored()
+        val outBy = Math.abs(stored.dueMillis - (System.currentTimeMillis() + 45 * 60_000L))
+        assertTrue("the task's own due time moves too (out by $outBy ms)", outBy < 2_000L)
+    }
+
+    // ---- nagging every five minutes -----------------------------------------
+
+    private fun minutesUntilNextAlarm(): Double {
+        val next = context.getSystemService(AlarmManager::class.java).nextAlarmClock
+        assertNotNull("expected an alarm to be scheduled", next)
+        return (next!!.triggerTime - System.currentTimeMillis()) / 60_000.0
+    }
+
+    @Test fun firing_arms_a_nag_five_minutes_out() {
+        deliver(ReminderContract.ACTION_FIRE)
+        assertNotNull("precondition: posted", active())
+        // The task's own alarm already fired, so the only one left is the nag.
+        val minutes = minutesUntilNextAlarm()
+        assertTrue("nag ~5 min out (was $minutes min)", minutes in 4.0..5.5)
+    }
+
+    @Test fun the_nag_keeps_the_notification_up_and_queues_the_next_buzz() {
+        deliver(ReminderContract.ACTION_FIRE)
+        assertNotNull("precondition: posted", active())
+
+        deliver(ReminderContract.ACTION_NAG)
+
+        assertNotNull("the notification must survive a nag", active())
+        val minutes = minutesUntilNextAlarm()
+        assertTrue("another nag ~5 min out (was $minutes min)", minutes in 4.0..5.5)
+    }
+
+    @Test fun the_nag_chain_stops_once_the_task_is_done() {
+        val alarmManager = context.getSystemService(AlarmManager::class.java)
+        deliver(ReminderContract.ACTION_FIRE)
+        deliver(ReminderContract.ACTION_DONE)
+        assertNull("precondition: Done cleared it", active())
+
+        // A nag already in flight when Done landed must not resurrect anything.
+        deliver(ReminderContract.ACTION_NAG)
+
+        assertNull("a done task must not be nagged back to life", active())
+        assertNull("and nothing further should be scheduled", alarmManager.nextAlarmClock)
+    }
+
+    @Test fun snooze_cancels_the_nag_and_leaves_only_the_snoozed_alarm() {
+        deliver(ReminderContract.ACTION_FIRE)
+        Reminders.snooze(context, taskId)
+        Thread.sleep(300)
+        assertNull("precondition: snooze cleared it", active())
+
+        // The only alarm left is the 5-minute snooze, not a nag on top of it.
+        val minutes = minutesUntilNextAlarm()
+        assertTrue("snooze alarm ~5 min out (was $minutes min)", minutes in 4.0..5.5)
+
+        // A stale nag must not re-post the notification the user just snoozed.
+        deliver(ReminderContract.ACTION_NAG)
+        assertNull("a snoozed reminder must stay gone", active())
+    }
+
+    /**
+     * Regression: the buzz used to go out unattributed, which the platform logs
+     * as USAGE_UNKNOWN. Real devices treat that as incidental haptic feedback
+     * and drop it behind touch-feedback / ring-mode / DND settings, so the nag
+     * was silent on a phone while looking fine on an emulator.
+     */
+    @Test fun the_buzz_declares_itself_as_an_alarm_not_unknown() {
+        // dumpsys keeps a rolling history, so only look at entries logged from
+        // here on — otherwise a stale line from an earlier build passes or fails
+        // the assertion for us.
+        val since = java.text.SimpleDateFormat("MM-dd HH:mm:ss.SSS", java.util.Locale.US)
+            .format(java.util.Date())
+
+        ReminderNotifier.vibrate(context)
+        Thread.sleep(600)
+
+        val dump = shell("dumpsys vibrator_manager")
+        val fresh = dump.lines()
+            .filter { it.contains("com.peskyreminders.poc") }
+            .filter { it.trimStart().take(18) >= since } // same day, so string order works
+
+        assertTrue("expected a vibration logged after $since", fresh.isNotEmpty())
+        // dumpsys prints the usage two ways: "usage: ALARM" in the history rows
+        // and "mUsage=ALARM" inside CallerInfo. Accept either, reject UNKNOWN.
+        val declaredAlarm = fresh.count {
+            it.contains("usage: ALARM") || it.contains("mUsage=ALARM")
+        }
+        val declaredUnknown = fresh.filter {
+            it.contains("usage: UNKNOWN") || it.contains("mUsage=UNKNOWN")
+        }
+        assertTrue("expected an ALARM-usage buzz, saw: $fresh", declaredAlarm > 0)
+        assertTrue(
+            "no buzz may go out as USAGE_UNKNOWN — real devices drop those: $declaredUnknown",
+            declaredUnknown.isEmpty(),
+        )
+    }
+
+    private fun shell(command: String): String =
+        androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+            .uiAutomation
+            .executeShellCommand(command)
+            .let { java.io.FileInputStream(it.fileDescriptor).bufferedReader().readText() }
+
+    // ---- the nag is configurable --------------------------------------------
+
+    @Test fun turning_nagging_off_means_no_nag_is_armed_at_all() {
+        val alarmManager = context.getSystemService(AlarmManager::class.java)
+        Settings.setNagEnabled(context, false)
+
+        deliver(ReminderContract.ACTION_FIRE)
+
+        assertNotNull("the reminder itself must still fire", active())
+        assertNull("but nothing further should be scheduled", alarmManager.nextAlarmClock)
+    }
+
+    @Test fun a_custom_interval_is_used_instead_of_five_minutes() {
+        Settings.setNagMinutes(context, 20)
+
+        deliver(ReminderContract.ACTION_FIRE)
+
+        val minutes = minutesUntilNextAlarm()
+        assertTrue("nag ~20 min out (was $minutes min)", minutes in 19.0..20.5)
+    }
+
+    @Test fun turning_nagging_off_stops_a_chain_that_is_already_running() {
+        val alarmManager = context.getSystemService(AlarmManager::class.java)
+        deliver(ReminderContract.ACTION_FIRE)
+        assertNotNull("precondition: nag armed", alarmManager.nextAlarmClock)
+
+        Settings.setNagEnabled(context, false)
+        Reminders.applyNagSettings(context)
+
+        assertNotNull("the notification stays up", active())
+        assertNull("the nag chain must be dropped", alarmManager.nextAlarmClock)
+    }
+
+    @Test fun changing_the_interval_re_arms_a_live_nag() {
+        deliver(ReminderContract.ACTION_FIRE)
+        assertTrue("precondition: ~5 min", minutesUntilNextAlarm() in 4.0..5.5)
+
+        Settings.setNagMinutes(context, 30)
+        Reminders.applyNagSettings(context)
+
+        val minutes = minutesUntilNextAlarm()
+        assertTrue("re-armed at ~30 min (was $minutes min)", minutes in 29.0..30.5)
+    }
+
+    @Test fun a_disabled_nag_that_still_fires_does_not_re_arm_itself() {
+        val alarmManager = context.getSystemService(AlarmManager::class.java)
+        deliver(ReminderContract.ACTION_FIRE)
+        Settings.setNagEnabled(context, false)
+
+        // An alarm already in flight when the user flipped the switch.
+        deliver(ReminderContract.ACTION_NAG)
+
+        assertNotNull("the notification is untouched", active())
+        assertNull("but the chain ends here", alarmManager.nextAlarmClock)
     }
 
     // ---- surviving a reboot -------------------------------------------------

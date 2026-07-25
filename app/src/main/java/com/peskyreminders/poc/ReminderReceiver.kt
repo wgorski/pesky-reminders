@@ -13,7 +13,7 @@ class ReminderReceiver : BroadcastReceiver() {
             ReminderContract.ACTION_FIRE -> Reminders.notify(context, taskId)
             ReminderContract.ACTION_REPOST -> Reminders.notify(context, taskId)
             ReminderContract.ACTION_DONE -> Reminders.toggle(context, taskId)
-            ReminderContract.ACTION_SNOOZE -> Reminders.snooze(context, taskId)
+            ReminderContract.ACTION_NAG -> Reminders.nag(context, taskId)
         }
     }
 }

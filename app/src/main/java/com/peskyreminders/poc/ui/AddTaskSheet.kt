@@ -52,8 +52,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
@@ -102,112 +100,59 @@ fun AddTaskSheet(
     val commit: (Long) -> Unit = { dueMillis = it; chipKey = null }
     val canSave = name.isNotBlank() && dueMillis != null
 
-    // Runs the entrance the moment the sheet is composed.
-    val appear = remember { MutableTransitionState(false).apply { targetState = true } }
-    val slideFrom = with(LocalDensity.current) { 48.dp.roundToPx() }
-    BackHandler(onBack = onDismiss)
-
-    Box(Modifier.fillMaxSize()) {
-        AnimatedVisibility(visibleState = appear, enter = fadeIn(tween(200)), exit = fadeOut()) {
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .testTag("sheet-scrim")
-                    .background(PeskyColors.Scrim)
-                    .tap(onDismiss)
+    PeskySheet(
+        title = "New pester",
+        onDismiss = onDismiss,
+        footer = {
+            SheetFooter(
+                nowMillis = nowMillis,
+                use24h = use24h,
+                dueMillis = dueMillis,
+                repeat = repeat,
+                onRepeat = { repeat = it },
+                canSave = canSave,
+                onSave = { dueMillis?.let { onSave(name.trim(), it, repeat) } },
             )
-        }
+        },
+    ) {
+                NameField(name) { name = it }
 
-        BoxWithConstraints(Modifier.fillMaxSize()) {
-            val sheetMax = maxHeight * 0.9f
-            AnimatedVisibility(
-                visibleState = appear,
-                modifier = Modifier.align(Alignment.BottomCenter),
-                enter = slideInVertically(tween(220)) { slideFrom } +
-                    fadeIn(tween(220), initialAlpha = 0.4f),
-                exit = fadeOut(),
-            ) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = sheetMax)
-                    .clip(SheetShape)
-                    .background(PeskyColors.Sheet)
-            ) {
-                // Sits *behind* the sheet's content and eats taps that land on
-                // empty space, so they never reach the scrim and close the sheet.
-                // A sibling rather than a modifier on the Column above: a
-                // clickable ancestor would merge the whole sheet into one
-                // semantics node — a single giant "button" to a screen reader.
-                Box(Modifier.matchParentSize().tap {})
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.ime)),
-            ) {
-                Grabber()
-                SheetHeader(onDismiss)
-
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .padding(start = 22.dp, end = 22.dp, top = 10.dp, bottom = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(18.dp),
-                ) {
-                    NameField(name) { name = it }
-
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("When?", style = PeskyType.FieldLabel)
-                        QuickPickGrid(
-                            nowMillis = nowMillis,
-                            use24h = use24h,
-                            selectedKey = chipKey,
-                            onPick = { pick -> dueMillis = pick.whenMillis; chipKey = pick.key },
-                        )
-                    }
-
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("…or dial it in", style = PeskyType.FieldLabel)
-                        ModeTabs(mode) { mode = it }
-
-                        when (mode) {
-                            EntryMode.CALENDAR -> CalendarPicker(
-                                nowMillis = nowMillis,
-                                use24h = use24h,
-                                base = base,
-                                dueMillis = dueMillis,
-                                monthOffset = calOffset,
-                                onMonthShift = { calOffset += it },
-                                onCommit = commit,
-                            )
-
-                            EntryMode.WHEELS -> Wheels(
-                                nowMillis = nowMillis,
-                                use24h = use24h,
-                                base = base,
-                                dueMillis = dueMillis,
-                                onCommit = commit,
-                            )
-                        }
-                    }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("When?", style = PeskyType.FieldLabel)
+                    QuickPickGrid(
+                        nowMillis = nowMillis,
+                        use24h = use24h,
+                        selectedKey = chipKey,
+                        onPick = { pick -> dueMillis = pick.whenMillis; chipKey = pick.key },
+                    )
                 }
 
-                SheetFooter(
-                    nowMillis = nowMillis,
-                    use24h = use24h,
-                    dueMillis = dueMillis,
-                    repeat = repeat,
-                    onRepeat = { repeat = it },
-                    canSave = canSave,
-                    onSave = { dueMillis?.let { onSave(name.trim(), it, repeat) } },
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("…or dial it in", style = PeskyType.FieldLabel)
+                    ModeTabs(mode) { mode = it }
+
+                    when (mode) {
+                        EntryMode.CALENDAR -> CalendarPicker(
+                            nowMillis = nowMillis,
+                            use24h = use24h,
+                            base = base,
+                            dueMillis = dueMillis,
+                            monthOffset = calOffset,
+                            onMonthShift = { calOffset += it },
+                            onCommit = commit,
+                        )
+
+                        EntryMode.WHEELS -> Wheels(
+                            nowMillis = nowMillis,
+                            use24h = use24h,
+                            base = base,
+                            dueMillis = dueMillis,
+                            onCommit = commit,
+                        )
+                    }
+                }
             }
-            }
-            }
-        }
-    }
+
 }
 
 @Composable
@@ -244,11 +189,14 @@ private fun SheetHeader(onDismiss: () -> Unit) {
     }
 }
 
+/**
+ * Deliberately does NOT take focus on open, unlike the design's `autoFocus`:
+ * on a phone that would throw the keyboard up over the time pickers before the
+ * user has decided whether they even want to type. They tap the field first.
+ */
 @Composable
 private fun NameField(value: String, onValue: (String) -> Unit) {
-    val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("What should I nag you about?", style = PeskyType.FieldLabel)
@@ -263,7 +211,6 @@ private fun NameField(value: String, onValue: (String) -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("name-field")
-                .focusRequester(focusRequester)
                 .clip(R12)
                 .background(PeskyColors.Field)
                 .border(1.dp, PeskyColors.FieldBorder, R12)
@@ -381,7 +328,7 @@ private fun Wheels(
     val selectedMinute = dueMillis?.let { MINUTE_STEPS.indexOf(TaskTime.minuteOf(it)) } ?: -1
 
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Wheel(
+        PeskyWheel(
             title = "DAY",
             modifier = Modifier.weight(1.5f),
             count = 14,
@@ -394,7 +341,7 @@ private fun Wheels(
             },
             onPick = { i -> onCommit(TaskTime.withDayOffset(base, nowMillis, i)) },
         )
-        Wheel(
+        PeskyWheel(
             title = "HOUR",
             modifier = Modifier.weight(1f),
             count = 24,
@@ -405,7 +352,7 @@ private fun Wheels(
             },
             onPick = { h -> onCommit(TaskTime.withHour(base, h)) },
         )
-        Wheel(
+        PeskyWheel(
             title = "MIN",
             modifier = Modifier.weight(0.8f),
             count = MINUTE_STEPS.size,
@@ -413,69 +360,6 @@ private fun Wheels(
             label = { i -> ":" + MINUTE_STEPS[i].toString().padStart(2, '0') },
             onPick = { i -> onCommit(TaskTime.withMinute(base, MINUTE_STEPS[i])) },
         )
-    }
-}
-
-@Composable
-private fun Wheel(
-    title: String,
-    modifier: Modifier,
-    count: Int,
-    selectedIndex: Int,
-    label: (Int) -> String,
-    onPick: (Int) -> Unit,
-) {
-    val state = rememberLazyListState()
-    // Bring the selection into view when it moves off-screen (e.g. a chip was tapped).
-    LaunchedEffect(selectedIndex) {
-        if (selectedIndex < 0) return@LaunchedEffect
-        if (state.layoutInfo.visibleItemsInfo.none { it.index == selectedIndex }) {
-            state.animateScrollToItem(maxOf(0, selectedIndex - 1))
-        }
-    }
-
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            title,
-            style = PeskyType.ColumnLabel,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        LazyColumn(
-            state = state,
-            modifier = Modifier
-                .height(168.dp)
-                .testTag("wheel-$title")
-                .clip(R12)
-                .background(PeskyColors.DoneCard)
-                .border(1.dp, PeskyColors.CardBorder, R12)
-                .padding(4.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            items(count) { index ->
-                val selected = index == selectedIndex
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("$title-$index")
-                        .clip(R8)
-                        .background(
-                            if (selected) PeskyColors.AccentWashStrong else Color.Transparent
-                        )
-                        .tap { onPick(index) }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        label(index),
-                        fontFamily = DmSans,
-                        fontSize = 12.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                        color = PeskyColors.Text,
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -780,7 +664,7 @@ private fun SheetFooter(
             Text(
                 "Pester me",
                 style = PeskyType.Action,
-                color = if (canSave) PeskyColors.Screen else PeskyColors.TextMuted,
+                color = if (canSave) PeskyColors.Text else PeskyColors.TextMuted,
             )
         }
     }

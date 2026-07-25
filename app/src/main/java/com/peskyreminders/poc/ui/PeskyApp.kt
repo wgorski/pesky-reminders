@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.peskyreminders.poc.Reminders
+import com.peskyreminders.poc.Settings
 import com.peskyreminders.poc.TaskStore
 import kotlinx.coroutines.delay
 
@@ -26,7 +27,10 @@ fun PeskyApp() {
     val use24h = remember(context) { DateFormat.is24HourFormat(context) }
 
     var sheetOpen by rememberSaveable { mutableStateOf(false) }
+    var settingsOpen by rememberSaveable { mutableStateOf(false) }
     var doneExpanded by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) { Settings.hydrate(context) }
 
     // Overdue vs. up-next is a function of the clock, so keep it moving.
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -58,6 +62,7 @@ fun PeskyApp() {
                     now = System.currentTimeMillis()
                 },
                 onAdd = { sheetOpen = true },
+                onOpenSettings = { settingsOpen = true },
             )
 
             if (sheetOpen) {
@@ -70,6 +75,22 @@ fun PeskyApp() {
                         now = System.currentTimeMillis()
                         sheetOpen = false
                     },
+                )
+            }
+
+            if (settingsOpen) {
+                SettingsSheet(
+                    nagEnabled = Settings.nagEnabled,
+                    nagMinutes = Settings.nagMinutes,
+                    onNagEnabled = {
+                        Settings.setNagEnabled(context, it)
+                        Reminders.applyNagSettings(context)
+                    },
+                    onNagMinutes = {
+                        Settings.setNagMinutes(context, it)
+                        Reminders.applyNagSettings(context)
+                    },
+                    onDismiss = { settingsOpen = false },
                 )
             }
         }

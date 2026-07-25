@@ -96,7 +96,7 @@ Tests pin `TimeZone` to UTC so they pass on any machine.
 - They also gate `git push` via `.githooks/pre-push`. Enable once per clone:
   `git config core.hooksPath .githooks`. Bypass with `git push --no-verify`.
 
-**Device (emulator)** — `app/src/androidTest/`, 8 tests. `ReminderModelTest` is the
+**Device (emulator)** — `app/src/androidTest/`, 20 tests. `ReminderModelTest` is the
 real proof of the notification model: it fires the notification's own delete-intent,
 which is exactly what the OS sends on a swipe. Note it calls `TaskStore.clear()`, so
 running it **wipes the task list on the device**.
@@ -173,25 +173,36 @@ app/src/main/java/com/peskyreminders/poc/
   Task.kt               # Task + Repeat model
   TaskTime.kt           # PURE date maths & labels (no Android deps) — unit-tested
   TaskStore.kt          # SharedPreferences-backed list, observable via mutableStateOf
+  Settings.kt           # user prefs (nag on/off + interval), same lazy-hydrate pattern
   Reminders.kt          # facade where the store and the alarm/notification plumbing meet
   ReminderContract.kt   # constants, per-task notification ids and request codes
   ReminderScheduler.kt  # AlarmManager.setAlarmClock wrapper (schedule/cancel per task)
-  ReminderReceiver.kt   # BroadcastReceiver: FIRE / REPOST / SNOOZE / DONE
+  ReminderReceiver.kt   # BroadcastReceiver: FIRE / REPOST / DONE / NAG
   BootReceiver.kt       # re-arms alarms after a reboot or an app update
+  SnoozeActivity.kt     # translucent host for the snooze picker
+  SnoozeOptions.kt      # PURE snooze durations + labels — unit-tested
   ReminderNotifier.kt   # builds the ongoing, re-posting notification
   ui/
     Theme.kt            # PeskyColors tokens + Bricolage Grotesque / DM Sans families
     PeskyIcons.kt       # the design's icon set as stroked ImageVectors
     Common.kt           # PeskyType text styles, pressable/tap modifiers
+    PeskySheet.kt       # shared bottom-sheet chrome (scrim, entrance, tap-swallow)
     PeskyApp.kt         # root: sheet + done-section state, the "now" ticker
     TaskListScreen.kt   # header, Overdue / Up next / Done sections, FAB
     AddTaskSheet.kt     # "New pester" sheet: chips, wheels, calendar, repeat, save
+    SettingsSheet.kt    # nag on/off + interval
+    SnoozeSheet.kt      # "Snooze until": presets + quarter-hour wheel
+    PeskyWheel.kt       # the shared scrolling picker column
 app/src/main/res/font/      # Bricolage Grotesque + DM Sans TTFs (from Google Fonts)
 app/src/test/               # deterministic JVM suite (Robolectric-hosted Compose)
   ReminderContractTest.kt   #   scheduling arithmetic
   TaskTimeTest.kt           #   date maths and labels
   ui/TaskListScreenTest.kt  #   list sections, toggles, FAB
   ui/AddTaskSheetTest.kt    #   every control in the add sheet
+  ui/SettingsSheetTest.kt   #   the nag switch and interval field
+  ui/SnoozeSheetTest.kt     #   presets, wheel, readout, commit
+  SettingsTest.kt           #   interval clamping
+  SnoozeOptionsTest.kt      #   snooze durations and labels
 app/src/androidTest/...     # instrumented tests (ReminderModelTest) — the real proof
 docs/                       # spec, plan, verification (with screenshots)
 .claude/hooks/              # verify-change.sh — post-edit test run
@@ -216,6 +227,11 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   `Modifier.pressable(scale = …)` from `ui/Common.kt`, and put it **before**
   `.clip()`/`.background()` in the chain, or only the content scales and the
   background stays put.
+- **The accent is the only saturated colour, and it does four jobs**: FAB/button
+  fill, label-on-fill, accent-as-text on the background, and selected borders.
+  Changing it means re-checking all four — a deep red that looks right on paper
+  can drop the FAB below the 3:1 UI-component floor and make it vanish. Text on
+  the accent is `Text` (cream), not `Screen`; near-black on crimson reads muddy.
 - **Never swallow taps with a `clickable` ancestor.** The sheet needs to eat taps on
   its empty space so they don't reach the scrim behind and close it. Doing that with
   `Modifier.clickable` on the sheet's own Column sets `mergeDescendants`, collapsing
@@ -224,12 +240,23 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   `Box(Modifier.matchParentSize().tap {})` *sibling behind* the content.
 - **Kotlin nests block comments.** A `/*` inside a KDoc (e.g. writing a path like
   `assets/icons/*.svg`) opens a nested comment and swallows the rest of the file.
+- **The name field does not auto-focus** — a deliberate deviation from the design's
+  `autoFocus`. On a phone that threw the keyboard up over the time pickers before the
+  user had decided whether they wanted to type at all. Don't "fix" it back.
+- **Never lose a typed value on focus alone.** Hiding the keyboard does NOT clear
+  Compose focus, so `onFocusChanged` never fires and the value is silently dropped.
+  The settings interval commits on each keystroke once it parses in range, and
+  clamps on Done/dismiss. Same trap applies to any future field.
 - **A repeating task is never "done".** Ticking it rolls it forward to the next
   occurrence; only `Repeat.ONCE` tasks flip to done. This is design behaviour, and
   `Reminders.toggle` is the single place it is implemented — the notification's Done
   action goes through the same call.
 - **Never schedule an alarm in the past** — `setAlarmClock` fires it immediately.
   `Reminders.toggle` cancels instead when the new due time has already passed.
+- **A notification action that shows UI must be an activity PendingIntent.**
+  Android 12+ blocks notification trampolines, so Snooze cannot go through
+  `ReminderReceiver` — it opens `SnoozeActivity` directly. Done stays a broadcast
+  because it shows nothing. There is an instrumented test asserting exactly this.
 - **Task ids start at 1.** They double as notification ids and as the base for
   PendingIntent request codes (`taskId * 8 + slot`), so `0` is reserved for the
   alarm's show-intent.

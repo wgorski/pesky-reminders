@@ -31,7 +31,7 @@ object Reminders {
         TaskStore.tasks.forEach { task ->
             when {
                 task.done -> Unit
-                task.dueMillis <= now -> ReminderNotifier.post(context, task)
+                task.dueMillis <= now -> notify(context, task.id)
                 else -> ReminderScheduler.schedule(context, task)
             }
         }
@@ -42,6 +42,60 @@ object Reminders {
         val task = TaskStore.find(context, taskId) ?: return
         if (task.done) return
         ReminderNotifier.post(context, task)
+        scheduleNextNag(context, taskId)
+    }
+
+    /**
+     * Buzz again for a notification the user is still ignoring, then queue the
+     * next one. Snooze and Done both clear the notification, so a missing one
+     * is how the chain stops.
+     */
+    fun nag(context: Context, taskId: Int) {
+        Settings.hydrate(context)
+        if (!Settings.nagEnabled) {
+            ReminderScheduler.cancelNag(context, taskId)
+            return
+        }
+        val task = TaskStore.find(context, taskId) ?: return
+        // Snooze and Done both clear the notification, so a missing one is how
+        // the chain stops. (Not "is the due time in the future?" — an alarm that
+        // fires a moment early would cancel its own chain.)
+        if (task.done || !ReminderNotifier.isShowing(context, taskId)) {
+            ReminderScheduler.cancelNag(context, taskId)
+            return
+        }
+        ReminderNotifier.post(context, task) // post() does the buzzing
+        scheduleNextNag(context, taskId)
+    }
+
+    /**
+     * Arms the next buzz, or cancels the chain outright when the user has
+     * turned nagging off. Interval comes from [Settings], not a constant.
+     */
+    private fun scheduleNextNag(context: Context, taskId: Int) {
+        Settings.hydrate(context)
+        if (!Settings.nagEnabled) {
+            ReminderScheduler.cancelNag(context, taskId)
+            return
+        }
+        ReminderScheduler.scheduleNag(
+            context,
+            taskId,
+            System.currentTimeMillis() + Settings.nagIntervalMillis(context),
+        )
+    }
+
+    /**
+     * Re-arm (or drop) the nags for notifications that are already on screen,
+     * so a settings change takes effect without waiting for the next buzz.
+     */
+    fun applyNagSettings(context: Context) {
+        TaskStore.hydrate(context)
+        TaskStore.tasks.forEach { task ->
+            if (!task.done && ReminderNotifier.isShowing(context, task.id)) {
+                scheduleNextNag(context, task.id)
+            }
+        }
     }
 
     /**
@@ -53,6 +107,7 @@ object Reminders {
         val task = TaskStore.find(context, taskId) ?: return
         val now = System.currentTimeMillis()
         ReminderNotifier.cancel(context, taskId)
+        ReminderScheduler.cancelNag(context, taskId)
 
         val next = if (!task.done && task.repeats) {
             task.copy(dueMillis = TaskTime.nextOccurrence(task.dueMillis, task.repeat, now))
@@ -67,11 +122,14 @@ object Reminders {
         else ReminderScheduler.schedule(context, next)
     }
 
-    fun snooze(context: Context, taskId: Int) {
+    fun snooze(context: Context, taskId: Int, minutes: Int = SnoozeOptions.DEFAULT_MINUTES) {
         val task = TaskStore.find(context, taskId) ?: return
         ReminderNotifier.cancel(context, taskId)
+        ReminderScheduler.cancelNag(context, taskId)
         val next = task.copy(
-            dueMillis = ReminderContract.snoozeTriggerAtMillis(System.currentTimeMillis())
+            dueMillis = ReminderContract.snoozeTriggerAtMillis(
+                System.currentTimeMillis(), minutes
+            )
         )
         TaskStore.replace(context, next)
         ReminderScheduler.schedule(context, next)

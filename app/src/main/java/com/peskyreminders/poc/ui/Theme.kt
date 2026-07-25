@@ -27,11 +27,26 @@ object PeskyColors {
     val TextMuted = Color(0xFF6E6962)
     val TextDisabled = Color(0xFF4B4742)
 
-    val Accent = Color(0xFFFF7A4F)
-    val AccentBright = Color(0xFFFF8F6A)
-    val AccentWash = Color(0x29FF7A4F) // rgba(255,122,79,0.16)
-    val AccentWashStrong = Color(0x33FF7A4F) // rgba(255,122,79,0.20)
-    val AccentGlow = Color(0x2EFF7A4F) // rgba(255,122,79,0.18)
+    /**
+     * Crimson, taken from the "uscita / exit" sign.
+     *
+     * The ink itself white-balances to about #914155, but that only reaches
+     * 2.7:1 against [Screen] — the FAB would sink into the background and the
+     * button labels would be unreadable. This keeps the sign's hue (350) and
+     * depth while clearing the bars: 3.6:1 as a shape on the background, 4.5:1
+     * for a cream label sitting on it.
+     *
+     * Because it is a deep red, text on top of it is [Text], not [Screen] —
+     * near-black on crimson only manages 3.6:1 and reads muddy.
+     */
+    val Accent = Color(0xFFD12744)
+
+    /** Lifted crimson, for accent text that sits on an accent wash. */
+    val AccentBright = Color(0xFFE8455F)
+
+    val AccentWash = Color(0x29D12744) // 16%
+    val AccentWashStrong = Color(0x33D12744) // 20%
+    val AccentGlow = Color(0x2ED12744) // 18%
 
     val Overdue = Color(0xFFFF6B6B)
     val OverdueBorder = Color(0x47FF6B6B) // rgba(255,107,107,0.28)
