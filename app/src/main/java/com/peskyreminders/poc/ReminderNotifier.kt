@@ -92,7 +92,7 @@ object ReminderNotifier {
         val due = TaskTime.formatFull(task.dueMillis, now, !DateFormat.is24HourFormat(context))
 
         val notification = NotificationCompat.Builder(context, ReminderContract.CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_popup_reminder)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(task.name)
             .setContentText(if (task.dueMillis < now) "Was due $due" else due)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

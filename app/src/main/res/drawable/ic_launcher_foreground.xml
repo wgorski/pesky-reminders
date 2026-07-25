@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  "Ringing Bell" — the bell from the app's own icon set, with a motion arc
+  either side so it reads as ringing rather than sitting still.
+
+  Sizing an adaptive-icon foreground: the canvas is 108dp but a launcher only
+  ever shows the central 72dp, so artwork drawn to the full canvas comes out
+  looking zoomed in. The whole composition spans 47dp, about 65% of that
+  visible area, which is where the stock icons sit. Its outer edges stay clear
+  of any round, squircle or teardrop mask.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- The bell, drawn in its native 24-unit box and scaled up. -->
+    <group
+        android:translateX="37.2"
+        android:translateY="37.2"
+        android:scaleX="1.4"
+        android:scaleY="1.4">
+        <path
+            android:strokeColor="#F3F0EB"
+            android:strokeWidth="2.2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:fillColor="@android:color/transparent"
+            android:pathData="M6,8 a6,6 0 0 1 12,0 c0,7 3,9 3,9 H3 s3,-2 3,-9" />
+        <path
+            android:strokeColor="#F3F0EB"
+            android:strokeWidth="2.2"
+            android:strokeLineCap="round"
+            android:fillColor="@android:color/transparent"
+            android:pathData="M10.3,21 a1.94,1.94 0 0 0 3.4,0" />
+    </group>
+
+    <!-- Sound coming off it. -->
+    <path
+        android:strokeColor="#F3F0EB"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M36,46 a10,10 0 0 0 0,16" />
+    <path
+        android:strokeColor="#F3F0EB"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:fillColor="@android:color/transparent"
+        android:pathData="M72,46 a10,10 0 0 1 0,16" />
+</vector>

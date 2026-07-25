@@ -81,6 +81,17 @@ class ReminderModelTest {
         assertEquals("Snooze + Done", 2, n.notification.actions.size)
     }
 
+    @Test fun the_notification_uses_our_own_small_icon() {
+        deliver(ReminderContract.ACTION_FIRE)
+        val n = active()
+        assertNotNull("precondition: posted", n)
+        assertEquals(
+            "the status-bar icon must be ours, not Android's stock reminder drawable",
+            R.drawable.ic_notification,
+            n!!.notification.smallIcon.resId,
+        )
+    }
+
     @Test fun dismissing_notification_triggers_repost() {
         deliver(ReminderContract.ACTION_FIRE)
         val posted = active()

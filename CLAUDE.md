@@ -193,7 +193,11 @@ app/src/main/java/com/peskyreminders/poc/
     SettingsSheet.kt    # nag on/off + interval
     SnoozeSheet.kt      # "Snooze until": presets + quarter-hour wheel
     PeskyWheel.kt       # the shared scrolling picker column
-app/src/main/res/font/      # Bricolage Grotesque + DM Sans TTFs (from Google Fonts)
+app/src/main/res/
+  font/                     # Bricolage Grotesque + DM Sans TTFs (from Google Fonts)
+  drawable/                 # the bell mark: launcher foreground, monochrome, notification
+  mipmap-anydpi-v26/        # adaptive icon (no PNG densities needed — minSdk is 26)
+  values/                   # themes.xml (translucent snooze host), colors.xml (icon bg)
 app/src/test/               # deterministic JVM suite (Robolectric-hosted Compose)
   ReminderContractTest.kt   #   scheduling arithmetic
   TaskTimeTest.kt           #   date maths and labels
@@ -227,6 +231,14 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   `Modifier.pressable(scale = …)` from `ui/Common.kt`, and put it **before**
   `.clip()`/`.background()` in the chain, or only the content scales and the
   background stays put.
+- **An adaptive icon only ever shows the central 72dp of its 108dp canvas**, so
+  artwork drawn to the full canvas comes out looking zoomed in. The bell mark
+  spans 47dp, about 65% of the visible area, matching the stock icons.
+- **The notification icon is alpha-only.** Android discards its colour, so
+  `ic_notification.xml` is a flat white silhouette. Its bell is drawn smaller
+  than the launcher's so the motion arcs do not merge into it at 24dp, and the
+  stroke is pre-divided by the group scale so it renders at ~1.7dp instead of a
+  hairline.
 - **The accent is the only saturated colour, and it does four jobs**: FAB/button
   fill, label-on-fill, accent-as-text on the background, and selected borders.
   Changing it means re-checking all four — a deep red that looks right on paper

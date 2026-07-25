@@ -28,6 +28,10 @@ you can't dismiss. The only ways to clear it are the notification's own two acti
 - Tasks persist across restarts (SharedPreferences), and each one gets its own
   independent alarm and notification.
 
+The icon is a ringing bell — the same bell the app uses in its empty state, with
+a motion arc either side — shipped as an adaptive icon plus a monochrome
+status-bar silhouette.
+
 The UI is a port of the "Pesky Reminders v2" Claude Design canvas — warm near-black
 surfaces, Bricolage Grotesque for the display type and DM Sans for everything else.
 The single accent is a crimson (`#D12744`) sampled from an "uscita / exit" sign; the
