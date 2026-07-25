@@ -18,7 +18,12 @@ android {
     }
 
     buildTypes {
-        release { isMinifyEnabled = false }
+        release {
+            isMinifyEnabled = false
+            // POC only: sign the release build with the debug key so the exposed
+            // APK is installable via sideload. A real release needs its own keystore.
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
 
     compileOptions {
