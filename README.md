@@ -1,165 +1,140 @@
 # Pesky Reminders
 
-An Android app for reminders you **cannot swipe away**.
+A reminder app for things you keep not doing.
 
-You add a task and pick when to be nagged. At that time a notification fires that
-you can't dismiss. The only ways to clear it are the notification's own two actions:
+Every other app puts a notification on your lock screen, you flick it away without
+reading it, and the thing stays undone. Pesky won't let you. Its notification cannot
+be swiped away, cannot be cleared, and comes straight back if you try. The only ways
+out are the two buttons on the notification itself: **Snooze** it, or mark it
+**Done**.
 
-- **Snooze** — opens a picker: 5 / 15 / 30 / 60 minutes, or a wheel running from
-  15 minutes to 3 days (quarter-hours early on, coarsening as it goes). Past three
-  hours each entry also shows the clock time it lands on — `4h (21:00)`.
-- **Done** — clears it for good.
+<img src="docs/screenshots/task-list.png" width="300" alt="The Pesky task list, banded by when things are due">
 
-## The app
+## When one goes off
 
-| Task list | New pester sheet | Calendar picker |
-|-----------|------------------|-----------------|
-| Overdue / Up next / Done | shortcut chips + scroll wheels | month grid + time chips |
+<img src="docs/screenshots/notification.png" width="440" alt="A Pesky notification with Snooze and Done actions">
 
-- **Task list** — an *Overdue* section (crimson, the same accent as everything else
-  that shouts), *Up next*, and a collapsible *Done* section with struck-through rows.
-  Ticking a repeating task rolls it forward to its next occurrence instead of
-  completing it. Rows glide between sections rather than jumping.
-- **Long-press a task** for its menu: *Reschedule* — a preset or a quarter-hour dial
-  — or mark it done / not done. Rescheduling always counts from now, so "30 minutes"
-  means half an hour from the moment you asked; on a task that was not due for hours,
-  that pulls it earlier.
-- **Delete** — also in the long-press menu. The only way to be rid of a repeating
-  task, since ticking one off just rolls it forward.
-- **CLEAR** — open the *Done* section and it offers to throw the completed list away.
-  Both deletes ask first: there is no undo anywhere in the app.
-- **New pester sheet** — a name, then a time picked whichever way suits: six shortcut
-  chips (*Later today*, *Tonight*, *This weekend*, …), three scroll wheels
-  (day / hour / minute), or a month calendar with an hour stepper and time-of-day
-  chips. Plus a repeat rule: Once / Daily / Weekly / Monthly.
-- **Settings** — a reminder you ignore keeps buzzing until you snooze it or tick it
-  off. That is on by default every 5 minutes, and both the on/off and the interval
-  (1–180 minutes) are configurable from the sliders icon in the header.
-- Tasks persist across restarts (SharedPreferences), and each one gets its own
-  independent alarm and notification.
+It arrives like any other notification — and then it stays.
 
-The icon is a ringing bell — the same bell the app uses in its empty state, with
-a motion arc either side — shipped as an adaptive icon plus a monochrome
-status-bar silhouette.
+- **Swipe it away** and it reappears immediately, in the same place, with the same
+  two buttons.
+- **Clear all** skips it. So does clearing from the lock screen.
+- If you leave it sitting there it **buzzes again every 5 minutes** until you deal
+  with it. (You can change the interval, or switch the nagging off — see Settings.)
+- **Done** clears it for good. **Snooze** opens the picker below.
 
-The UI is a port of the "Pesky Reminders v2" Claude Design canvas — warm near-black
-surfaces, Bricolage Grotesque for the display type and DM Sans for everything else.
-The single accent is a crimson (`#D12744`) sampled from an "uscita / exit" sign; the
-design's original orange was swapped for it.
+The wording stays in the present tense — *"Is due Today, 08:00"* — however late it
+is. It's on your screen because the thing still wants doing.
 
-## Does the notification model actually work?
+<img src="docs/screenshots/snooze.png" width="300" alt="The Snooze until sheet">
 
-Yes — and it's proven, not just claimed. See [`docs/verification/VERIFICATION.md`](docs/verification/VERIFICATION.md).
+Four presets for the common cases — 5, 15, 30 minutes, an hour — and a wheel for
+everything else, from a quarter of an hour out to three days. The wheel gets coarser
+as it goes (quarter-hours, then half-hours, then hours, then six-hour jumps), and
+once you're past three hours each entry tells you the clock time it lands on, so
+"7h" reads as the 4pm it actually means. The line above the button always spells out
+where you'll end up: *Back at Today, 9:23 AM*. Snoozing counts from **now**, not from
+when the reminder was originally due.
 
-- Automated: JVM unit tests + on-device instrumented tests. The key test fires the
-  notification's *own* delete-intent — exactly what Android sends on a user swipe —
-  and asserts the notification re-posts.
-- Manual demo (screenshots in `docs/verification/`): the reminder fires, is swiped
-  away, and **immediately reappears**; then **Done** clears it for good.
+## The list
 
-| Fired | Swiped → re-posted | Done → gone |
-|-------|--------------------|-------------|
-| ![fired](docs/verification/02-fired.png) | ![reposted](docs/verification/03-after-swipe-reposted.png) | ![gone](docs/verification/04-after-done-gone.png) |
+The screen at the top of this page: everything you've asked to be nagged about, in
+the order it's coming at you — **Overdue**, **Today**, **Tomorrow**, **This week**,
+**Next week**, **Later**. Bands with nothing in them simply aren't there, so the list
+is never padded with empty headings.
 
-## How it works
+- **Overdue is the loud one.** Crimson outline, crimson text, a dot in the heading.
+  A task leaves *Today* the moment it's late, so being overdue is never something you
+  have to squint for.
+- **Tap the circle** to tick a task off. It slides down into *Done*, struck through.
+  Tap it again to bring it back.
+- **A repeating task never gets ticked off** — it rolls forward to its next
+  occurrence instead. Tick the daily *Water the plants* and it comes back tomorrow
+  at 6:30pm.
+- Try to tick a repeater **before** its time has come and nothing happens, but the
+  app says why: *"Not due until Tomorrow, 8:00 AM."* Rolling it forward early would
+  throw away the occurrence you could still act on.
+- **Done** collapses out of the way and keeps a count. Open it and a **CLEAR** button
+  appears, which throws the whole completed list away — after asking first, since
+  nothing in this app can be undone.
 
-- **Scheduling:** `AlarmManager.setAlarmClock()` (exact, Doze-friendly) with the
-  `USE_EXACT_ALARM` permission — no runtime prompt for a reminder app. Each task
-  owns its own alarm, notification id, and PendingIntent request codes.
-- **Un-dismissability:** the notification is `setOngoing(true)` **and** carries a
-  `deleteIntent`. On Android 14+ the ongoing flag no longer blocks an individual
-  swipe, so the delete-intent is the real guarantee: whenever the notification is
-  dismissed, the OS fires the delete-intent and the app re-posts it. Snooze and Done
-  clear it via `NotificationManager.cancel()`, which does **not** fire the
-  delete-intent — so only they can actually make it go away.
-- **Surviving a reboot:** pending alarms are dropped when the device restarts (and
-  when the app is updated), so a `BootReceiver` re-arms them from the stored task
-  list on `BOOT_COMPLETED` / `MY_PACKAGE_REPLACED`. Anything that came due while the
-  device was off is posted right away rather than quietly lost.
-- **No foreground service, no full-screen intent.**
+## Adding something
 
-All control flow runs through a single `BroadcastReceiver` (`ReminderReceiver`)
-handling four actions: `FIRE`, `REPOST`, `SNOOZE`, `DONE`. Both the receiver and the
-UI mutate state through one facade (`Reminders`), so tapping *Done* in the
-notification and ticking the task in the app take exactly the same path.
+<table>
+<tr>
+<td><img width="270" src="docs/screenshots/new-pester.png" alt="The New pester sheet with the quick-pick wheels"></td>
+<td><img width="270" src="docs/screenshots/calendar-picker.png" alt="The same sheet switched to the calendar view"></td>
+</tr>
+</table>
 
-## Requirements
+The **+** button opens one sheet: what to nag you about, when, and how often.
 
-- JDK 17
-- Android SDK with platform 35, build-tools 35, an emulator or a device (min SDK 26)
-- The Gradle **wrapper** is included (`./gradlew`, pinned to 8.11.1) — don't use a
-  system Gradle.
+A time is always already chosen — about an hour from now, rounded to the hour, or
+tomorrow morning at 8:00 if it's already late in the evening. So the name is the only
+thing you actually have to fill in, and the button at the bottom stays greyed out
+until you do.
 
-If `adb`/`emulator` aren't on your PATH, export the SDK location first (adjust to
-your SDK path):
+Pick the time whichever way suits:
 
-```bash
-export ANDROID_HOME="$HOME/Library/Android/sdk"   # or /opt/homebrew/share/android-commandlinetools
-export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
-```
+- **Quick pick** — three wheels: the day (a fortnight of them), the hour, and
+  quarter-hour minutes. Fastest for "tomorrow morning".
+- **Calendar** — a month grid for anything further out, with `−1 hr` / `+1 hr` either
+  side of the time and shortcuts for *Morning 9:00*, *Noon*, *Evening 7:00*,
+  *Night 9:00* and *+15 min*.
 
-## Build & run
+Either way, the crimson line above **Repeat** is the truth: *Today, 10:00 AM*. Then
+choose **Once**, **Daily**, **Weekly** or **Monthly**, and hit **Pester me**.
 
-```bash
-# Build and install the debug app on a running emulator/device
-./gradlew :app:assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb shell am start -n com.peskyreminders.poc/.MainActivity
-```
+## Changing your mind
 
-Tap **+**, type something, pick a time, tap **Pester me**. When the reminder fires,
-try to swipe it away — it comes back. Tap **Done** to clear it.
+**Tap a task** — anywhere on the row except the circle — and the same sheet opens on
+it, seeded with its name, its time and its repeat rule. Change whatever you like and
+press **Save changes**; nothing moves until you do.
 
-## Test
+The one exception is **Delete**, which appears only on repeating tasks and acts
+straight away. A repeater can't be ticked off and can't reach the done list, so
+deleting it is the only way to be rid of it. One-off tasks don't get the row: tick
+them off and clear the done list instead.
 
-```bash
-./gradlew :app:testDebugUnitTest          # 148 deterministic tests, JVM only, ~7s
+## Settings
 
-# Instrumented tests need a running emulator/device.
-# (connected-test tasks use the property form, not --tests)
-./gradlew :app:connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=com.peskyreminders.poc.ReminderModelTest
-```
+The sliders icon in the header opens one sheet. **Keep buzzing** is what makes a
+reminder you're ignoring buzz again rather than sit there quietly; it's on by
+default, every 5 minutes, and the interval takes anything from 1 to 180 minutes.
+Turn it off and the notification still won't go away — it just stops making noise
+about it.
 
-The JVM suite needs no device: Robolectric hosts the real composables, and every
-screen takes "now" as a parameter instead of reading the clock, so every expected
-label is a fixed string and the tests can't drift with the date. It covers the date
-maths and drives every control in the list and the add sheet. The instrumented suite
-covers what only a device can: the alarm and the un-dismissable notification. Note
-that running it **clears the task list on the device**.
+## Things worth knowing
 
-To make the JVM suite gate your pushes:
+- **It survives a restart.** Reminders are re-armed when the phone reboots or the app
+  updates, and anything that came due while the phone was off is posted the moment
+  it comes back rather than quietly lost.
+- **There's no undo.** Deleting a task and clearing the done list both ask first,
+  because that's the only safety net there is.
+- **Getting rid of a one-off takes two steps** — tick it off, then clear the done
+  list. Only repeating tasks get a Delete button.
+- **The wheels can't always point at your task.** If something is due next month, or
+  sitting at 9:07 after a snooze, the wheels show nothing selected — the readout
+  underneath still states the real time, and the calendar opens on the right month.
+- **It asks for one permission**, to post notifications. There's no account, no
+  network, no sync; the list lives on your phone.
+
+## Get it
+
+Grab `pesky-reminders-*.apk` from the [Releases](../../releases) page and sideload it.
+Android 8.0 or newer.
+
+## Build it yourself
 
 ```bash
-git config core.hooksPath .githooks    # once per clone; bypass with --no-verify
+./gradlew :app:assembleDebug          # build
+./gradlew :app:testDebugUnitTest      # the fast test suite, no device needed
+./gradlew :app:connectedDebugAndroidTest   # the on-device suite (wipes the task list)
 ```
 
-## Releases
-
-Versioning is semver, with `versionName` in `app/build.gradle.kts` as the single
-source of truth; it's bumped once per branch/session. Release APKs are auto-named
-`pesky-reminders-X.Y.Z.apk`.
-
-Published releases (tag `vX.Y.Z`, APK attached) are cut with the `release` skill in
-`.claude/skills/release/`.
-
-## Download the APK
-
-A debug-signed **release** APK can be served locally on port 9999:
-
-```bash
-./gradlew :app:assembleRelease
-mkdir -p dist && cp app/build/outputs/apk/release/pesky-reminders-*.apk dist/pesky-reminders.apk
-cd dist && python3 -m http.server 9999 --bind 0.0.0.0
-```
-
-Then download from `http://localhost:9999/pesky-reminders.apk` (or
-`http://<your-LAN-ip>:9999/pesky-reminders.apk` from a phone on the same Wi-Fi).
-The release build is debug-signed for easy sideloading; a real release needs its
-own keystore.
-
-## Scope
-
-Intentionally **not** included: editing a task — the design has none, so a typo
-means delete and re-add. There is also no undo: both deletes confirm first instead.
-See `docs/` for the full spec, plan, and verification.
+The interesting test is `ReminderModelTest`: it fires the notification's *own*
+delete-intent — exactly what Android sends when you swipe — and asserts the
+notification comes back. Proof that the whole premise holds is in
+[`docs/verification/VERIFICATION.md`](docs/verification/VERIFICATION.md); the design
+and the plan behind the app are in [`docs/`](docs/), and
+[`CLAUDE.md`](CLAUDE.md) covers how the code is put together.
