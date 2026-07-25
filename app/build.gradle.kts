@@ -12,8 +12,10 @@ android {
         applicationId = "com.peskyreminders.poc"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1"
+        versionCode = 2
+        // Single source of truth for the release version. Semver; bump once per
+        // branch/session (minor for features, patch for fixes) — see CLAUDE.md.
+        versionName = "0.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -26,6 +28,18 @@ android {
         }
     }
 
+    // Name the release artifact after the version so the file in
+    // app/build/outputs/apk/release/ always says what it is. Debug keeps the
+    // stock app-debug.apk name that the install/test commands rely on.
+    applicationVariants.all {
+        if (name == "release") {
+            outputs.all {
+                (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl)
+                    .outputFileName = "pesky-reminders-$versionName.apk"
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -33,6 +47,14 @@ android {
     kotlinOptions { jvmTarget = "17" }
 
     buildFeatures { compose = true }
+
+    // The Compose UI tests run on the JVM under Robolectric, so they need the
+    // merged resources (fonts, manifest) available to plain unit tests.
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -43,6 +65,12 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation(platform("androidx.compose:compose-bom:2024.10.01"))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("androidx.test.ext:junit:1.2.1")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

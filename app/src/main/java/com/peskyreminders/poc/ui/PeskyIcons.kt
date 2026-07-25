@@ -1,0 +1,109 @@
+package com.peskyreminders.poc.ui
+
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathBuilder
+import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.unit.dp
+
+/**
+ * The design's `assets/icons` SVG set, redrawn as stroked vectors.
+ *
+ * The exported SVGs are outline-expanded (strokes baked into fill paths); these
+ * are the same shapes kept as strokes so they stay crisp at any size and can be
+ * tinted by [androidx.compose.material3.Icon].
+ */
+object PeskyIcons {
+
+    val Bell: ImageVector = stroked("bell") {
+        moveTo(6f, 8f)
+        arcToRelative(6f, 6f, 0f, isMoreThanHalf = false, isPositiveArc = true, 12f, 0f)
+        curveToRelative(0f, 7f, 3f, 9f, 3f, 9f)
+        horizontalLineTo(3f)
+        reflectiveCurveToRelative(3f, -2f, 3f, -9f)
+        moveTo(10.3f, 21f)
+        arcToRelative(1.94f, 1.94f, 0f, isMoreThanHalf = false, isPositiveArc = false, 3.4f, 0f)
+    }
+
+    val Check: ImageVector = stroked("check") {
+        moveTo(20f, 6f)
+        lineTo(9f, 17f)
+        lineToRelative(-5f, -5f)
+    }
+
+    val ChevronDown: ImageVector = stroked("chevron-down") {
+        moveTo(6f, 9f)
+        lineTo(12f, 15f)
+        lineTo(18f, 9f)
+    }
+
+    val ChevronRight: ImageVector = stroked("chevron-right") {
+        moveTo(9f, 18f)
+        lineTo(15f, 12f)
+        lineTo(9f, 6f)
+    }
+
+    val Clock: ImageVector = stroked("clock") {
+        moveTo(12f, 2f)
+        arcToRelative(10f, 10f, 0f, isMoreThanHalf = true, isPositiveArc = false, 0f, 20f)
+        arcToRelative(10f, 10f, 0f, isMoreThanHalf = true, isPositiveArc = false, 0f, -20f)
+        moveTo(12f, 6f)
+        verticalLineToRelative(6f)
+        lineToRelative(4f, 2f)
+    }
+
+    val Repeat: ImageVector = stroked("repeat") {
+        moveTo(17f, 2f)
+        lineTo(21f, 6f)
+        lineTo(17f, 10f)
+        moveTo(3f, 11f)
+        verticalLineToRelative(-1f)
+        arcToRelative(4f, 4f, 0f, isMoreThanHalf = false, isPositiveArc = true, 4f, -4f)
+        horizontalLineToRelative(14f)
+        moveTo(7f, 22f)
+        lineTo(3f, 18f)
+        lineTo(7f, 14f)
+        moveTo(21f, 13f)
+        verticalLineToRelative(1f)
+        arcToRelative(4f, 4f, 0f, isMoreThanHalf = false, isPositiveArc = true, -4f, 4f)
+        horizontalLineTo(3f)
+    }
+
+    /** The FAB glyph — heavier stroke than the icon set, per the design. */
+    val Plus: ImageVector = stroked("plus", width = 3f) {
+        moveTo(12f, 5f)
+        verticalLineTo(19f)
+        moveTo(5f, 12f)
+        horizontalLineTo(19f)
+    }
+
+    val Close: ImageVector = stroked("close") {
+        moveTo(6f, 6f)
+        lineTo(18f, 18f)
+        moveTo(18f, 6f)
+        lineTo(6f, 18f)
+    }
+
+    private fun stroked(
+        name: String,
+        width: Float = 2f,
+        build: PathBuilder.() -> Unit,
+    ): ImageVector = ImageVector.Builder(
+        name = name,
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        path(
+            stroke = SolidColor(Color.Black),
+            strokeLineWidth = width,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round,
+            pathBuilder = build,
+        )
+    }.build()
+}
