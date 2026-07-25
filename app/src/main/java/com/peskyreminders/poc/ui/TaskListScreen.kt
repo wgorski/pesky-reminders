@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import com.peskyreminders.poc.DueGroup
 import com.peskyreminders.poc.Task
 import com.peskyreminders.poc.TaskTime
 
@@ -56,8 +57,8 @@ private val CardShape = RoundedCornerShape(18.dp)
  *
  * An arriving item fades in *at its final slot*, so without the delay it paints
  * on top of whatever is still sliding out of that slot — un-ticking the last
- * active task drew "UP NEXT" straight over the "DONE" header mid-flight. Holding
- * the fade until the move is most of the way done keeps the slot clear.
+ * active task drew its band heading straight over the "DONE" header mid-flight.
+ * Holding the fade until the move is most of the way done keeps the slot clear.
  */
 private val MOVE: FiniteAnimationSpec<IntOffset> = tween(280, easing = FastOutSlowInEasing)
 private val FADE_IN: FiniteAnimationSpec<Float> =
@@ -87,12 +88,13 @@ fun TaskListScreen(
     onToggleTask: (Int) -> Unit,
     onAdd: () -> Unit,
     onOpenSettings: () -> Unit = {},
-    onTaskActions: (Int) -> Unit = {},
+    onOpenTask: (Int) -> Unit = {},
     onClearDone: () -> Unit = {},
 ) {
     val active = tasks.filterNot { it.done }.sortedBy { it.dueMillis }
-    val overdue = active.filter { it.dueMillis < nowMillis }
-    val upNext = active.filter { it.dueMillis >= nowMillis }
+    // Every active task lands in exactly one band, and the bands are declared in
+    // chronological order, so walking the enum lays the list out for us.
+    val bands = active.groupBy { TaskTime.groupOf(it.dueMillis, nowMillis) }
     val done = tasks.filter { it.done }.sortedByDescending { it.dueMillis }
 
     Box(Modifier.fillMaxSize().background(PeskyColors.Screen)) {
@@ -111,29 +113,24 @@ fun TaskListScreen(
                     item("empty") { EmptyState(Modifier.animateItem(FADE_IN, MOVE, FADE_OUT)) }
                 }
 
-                if (overdue.isNotEmpty()) {
-                    item("h-overdue") {
-                        OverdueHeader(Modifier.sectionGap().animateItem(FADE_IN, MOVE, FADE_OUT))
-                    }
-                    items(overdue, key = { "t-${it.id}" }) { task ->
-                        TaskRow(
-                            task, nowMillis, use24h, true, onToggleTask, onTaskActions,
-                            Modifier.cardLayer().animateItem(FADE_IN, MOVE, FADE_OUT),
-                        )
-                    }
-                }
+                DueGroup.entries.forEach { band ->
+                    val rows = bands[band].orEmpty()
+                    if (rows.isEmpty()) return@forEach
 
-                if (upNext.isNotEmpty()) {
-                    item("h-upnext") {
-                        SectionLabel(
-                            "UP NEXT",
-                            PeskyColors.TextMuted,
-                            Modifier.sectionGap().animateItem(FADE_IN, MOVE, FADE_OUT),
-                        )
+                    item("h-${band.name}") {
+                        val headerModifier = Modifier
+                            .sectionGap()
+                            .animateItem(FADE_IN, MOVE, FADE_OUT)
+                        if (band == DueGroup.OVERDUE) {
+                            OverdueHeader(headerModifier)
+                        } else {
+                            SectionLabel(band.label, PeskyColors.TextMuted, headerModifier)
+                        }
                     }
-                    items(upNext, key = { "t-${it.id}" }) { task ->
+                    items(rows, key = { "t-${it.id}" }) { task ->
                         TaskRow(
-                            task, nowMillis, use24h, false, onToggleTask, onTaskActions,
+                            task, nowMillis, use24h, band == DueGroup.OVERDUE,
+                            onToggleTask, onOpenTask,
                             Modifier.cardLayer().animateItem(FADE_IN, MOVE, FADE_OUT),
                         )
                     }
@@ -152,7 +149,7 @@ fun TaskListScreen(
                     if (doneExpanded) {
                         items(done, key = { "t-${it.id}" }) { task ->
                             DoneRow(
-                                task, onToggleTask, onTaskActions,
+                                task, onToggleTask, onOpenTask,
                                 Modifier.cardLayer().animateItem(FADE_IN, MOVE, FADE_OUT),
                             )
                         }
@@ -235,15 +232,17 @@ private fun TaskRow(
     use24h: Boolean,
     overdue: Boolean,
     onToggle: (Int) -> Unit,
-    onActions: (Int) -> Unit,
+    onOpen: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val due = TaskTime.formatFull(task.dueMillis, nowMillis, use24h)
     Row(
+        // The whole row opens the task. The check circle is a nested target, so a
+        // tap that lands on it ticks the task off and never reaches this.
         modifier = modifier
             .fillMaxWidth()
             .testTag("row-${task.id}")
-            .longPressable("Task actions") { onActions(task.id) }
+            .pressable(scale = 0.99f) { onOpen(task.id) }
             .clip(CardShape)
             .background(PeskyColors.Card)
             .border(
@@ -383,14 +382,14 @@ private fun DoneHeader(
 private fun DoneRow(
     task: Task,
     onToggle: (Int) -> Unit,
-    onActions: (Int) -> Unit,
+    onOpen: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
             .testTag("row-${task.id}")
-            .longPressable("Task actions") { onActions(task.id) }
+            .pressable(scale = 0.99f) { onOpen(task.id) }
             .clip(CardShape)
             .background(PeskyColors.DoneCard)
             .border(1.dp, PeskyColors.DoneCardBorder, CardShape)

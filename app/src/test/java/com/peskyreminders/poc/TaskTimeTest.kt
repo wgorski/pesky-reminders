@@ -5,14 +5,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.util.Calendar
+import java.util.Locale
 import java.util.TimeZone
 
 /** Exercises the pure date maths behind the list labels and the add sheet. */
 class TaskTimeTest {
 
-    /** Pin the zone so these assertions hold on any machine. */
-    @Before fun fixTimeZone() {
+    /**
+     * Pin the zone so these assertions hold on any machine, and the locale because
+     * [TaskTime.groupOf] asks it which day a week starts on. US = Sunday-first;
+     * [grouping_follows_the_locales_first_day_of_the_week] covers the other case.
+     */
+    @Before fun fixTimeZoneAndLocale() {
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+        Locale.setDefault(Locale.US)
     }
 
     private fun at(
@@ -113,62 +119,147 @@ class TaskTimeTest {
         )
     }
 
-    @Test fun quick_picks_land_where_the_design_says() {
-        val picks = TaskTime.quickPicks(now).associateBy { it.key }
-        assertEquals(6, picks.size)
+    // ---- which section of the list a task lands in ---------------------------
 
-        // now + 3h = 17:20, rounded up to the next quarter hour.
-        assertEquals(at(2026, Calendar.JULY, 25, 17, 30), picks.getValue("later").whenMillis)
-        // Before 19:00, so "tonight" is 20:00 today.
-        assertEquals(at(2026, Calendar.JULY, 25, 20), picks.getValue("tonight").whenMillis)
-        assertEquals(at(2026, Calendar.JULY, 26, 9), picks.getValue("tom-am").whenMillis)
-        assertEquals(at(2026, Calendar.JULY, 26, 19), picks.getValue("tom-pm").whenMillis)
-        // Today IS Saturday, so "this weekend" means next Saturday, never today.
-        assertEquals(at(2026, Calendar.AUGUST, 1, 10), picks.getValue("weekend").whenMillis)
-        assertEquals(at(2026, Calendar.JULY, 27, 9), picks.getValue("nextweek").whenMillis)
+    /** Monday 27 July 2026, 09:00 — mid-week, so every band is reachable. */
+    private val monday = at(2026, Calendar.JULY, 27, 9)
+
+    @Test fun anything_already_past_is_overdue_whatever_day_it_is() {
+        assertEquals(
+            DueGroup.OVERDUE,
+            TaskTime.groupOf(at(2026, Calendar.JULY, 25, 9), now),
+        )
+        // Earlier today counts too — being late is about the clock, not the date.
+        assertEquals(
+            DueGroup.OVERDUE,
+            TaskTime.groupOf(at(2026, Calendar.JULY, 25, 14, 19), now),
+        )
+        assertEquals(
+            DueGroup.OVERDUE,
+            TaskTime.groupOf(at(2026, Calendar.JULY, 20, 9), now),
+        )
     }
 
-    private fun tonightAt(nowMillis: Long): Long =
-        TaskTime.quickPicks(nowMillis).first { it.key == "tonight" }.whenMillis
+    @Test fun the_rest_of_today_is_today() {
+        assertEquals(DueGroup.TODAY, TaskTime.groupOf(at(2026, Calendar.JULY, 25, 14, 21), now))
+        assertEquals(DueGroup.TODAY, TaskTime.groupOf(at(2026, Calendar.JULY, 25, 23, 59), now))
+    }
 
-    @Test fun tonight_rolls_over_once_the_evening_has_started() {
-        val late = at(2026, Calendar.JULY, 25, 21, 0)
-        assertEquals(at(2026, Calendar.JULY, 26, 20), tonightAt(late))
+    @Test fun the_next_day_is_tomorrow() {
+        assertEquals(DueGroup.TOMORROW, TaskTime.groupOf(at(2026, Calendar.JULY, 26, 0, 1), now))
+        assertEquals(DueGroup.TOMORROW, TaskTime.groupOf(at(2026, Calendar.JULY, 26, 23, 59), now))
+    }
+
+    @Test fun the_days_after_tomorrow_split_by_calendar_week() {
+        // From Monday the 27th: the 29th is still this week, the 3rd is next.
+        assertEquals(DueGroup.THIS_WEEK, TaskTime.groupOf(at(2026, Calendar.JULY, 29, 9), monday))
+        assertEquals(DueGroup.THIS_WEEK, TaskTime.groupOf(at(2026, Calendar.AUGUST, 1, 9), monday))
+        assertEquals(DueGroup.NEXT_WEEK, TaskTime.groupOf(at(2026, Calendar.AUGUST, 3, 9), monday))
+        assertEquals(DueGroup.NEXT_WEEK, TaskTime.groupOf(at(2026, Calendar.AUGUST, 8, 9), monday))
+        assertEquals(DueGroup.LATER, TaskTime.groupOf(at(2026, Calendar.AUGUST, 9, 9), monday))
+        assertEquals(DueGroup.LATER, TaskTime.groupOf(at(2026, Calendar.DECEMBER, 9, 9), monday))
     }
 
     /**
-     * The bug this replaces: the roll-over tested `HOUR_OF_DAY >= 19` while the
-     * chip pointed at 20:00, so for the whole 19:00–20:00 hour "Tonight" offered
-     * tomorrow when tonight had not happened yet. The old tests sat at 14:20 and
-     * 21:00 — either side of the only hour that was broken.
+     * Tomorrow is named before the weeks are counted, so a Saturday's Sunday reads
+     * "TOMORROW" rather than being swept into next week — which is also why THIS
+     * WEEK is simply empty on the last day of a week.
      */
-    @Test fun tonight_still_means_tonight_during_the_hour_before_it() {
-        assertEquals(at(2026, Calendar.JULY, 25, 20), tonightAt(at(2026, Calendar.JULY, 25, 19, 36)))
+    @Test fun tomorrow_wins_over_the_week_it_falls_in() {
+        // `now` is Saturday 25 July; Sunday the 26th starts the next US week.
+        assertEquals(1, TaskTime.weekDiff(at(2026, Calendar.JULY, 26, 9), now))
+        assertEquals(DueGroup.TOMORROW, TaskTime.groupOf(at(2026, Calendar.JULY, 26, 9), now))
     }
 
-    @Test fun tonight_holds_until_the_last_minute_before_eight() {
-        assertEquals(at(2026, Calendar.JULY, 25, 20), tonightAt(at(2026, Calendar.JULY, 25, 19, 59)))
+    @Test fun grouping_follows_the_locales_first_day_of_the_week() {
+        val sunday = at(2026, Calendar.AUGUST, 2, 9)
+
+        // US weeks start on Sunday, so the 2nd opens a new week from Monday the 27th.
+        Locale.setDefault(Locale.US)
+        assertEquals(DueGroup.NEXT_WEEK, TaskTime.groupOf(sunday, monday))
+
+        // UK weeks start on Monday, so the 2nd is still the same week's tail.
+        Locale.setDefault(Locale.UK)
+        assertEquals(DueGroup.THIS_WEEK, TaskTime.groupOf(sunday, monday))
     }
 
-    @Test fun tonight_rolls_the_moment_eight_arrives() {
-        assertEquals(at(2026, Calendar.JULY, 26, 20), tonightAt(at(2026, Calendar.JULY, 25, 20, 0)))
+    @Test fun every_group_is_reachable_and_they_come_out_in_order() {
+        val samples = listOf(
+            at(2026, Calendar.JULY, 26, 9) to DueGroup.OVERDUE, // yesterday, from Monday
+            at(2026, Calendar.JULY, 27, 18) to DueGroup.TODAY,
+            at(2026, Calendar.JULY, 28, 9) to DueGroup.TOMORROW,
+            at(2026, Calendar.JULY, 30, 9) to DueGroup.THIS_WEEK,
+            at(2026, Calendar.AUGUST, 4, 9) to DueGroup.NEXT_WEEK,
+            at(2026, Calendar.AUGUST, 20, 9) to DueGroup.LATER,
+        )
+        samples.forEach { (due, expected) ->
+            assertEquals("for $due", expected, TaskTime.groupOf(due, monday))
+        }
+        // Chronological order and declaration order have to agree, because the list
+        // lays its sections out by walking the enum.
+        val order = samples.map { it.second.ordinal }
+        assertEquals(order.sorted(), order)
+        assertEquals("every band covered", DueGroup.entries.size, samples.size)
     }
 
-    @Test fun tonight_is_never_in_the_past() {
-        // Every minute of the day, at both ends of an hour.
+    // ---- what the new-pester sheet opens on ---------------------------------
+
+    @Test fun default_due_is_about_an_hour_out_on_the_hour() {
+        // 14:20 + 1h = 15:20, and the nearest hour to that is 15:00.
+        assertEquals(at(2026, Calendar.JULY, 25, 15), TaskTime.defaultDue(now))
+        assertEquals(
+            at(2026, Calendar.JULY, 25, 15),
+            TaskTime.defaultDue(at(2026, Calendar.JULY, 25, 14, 29)),
+        )
+        // 14:59 + 1h = 15:59 rounds *up*, so the default is never a minute away.
+        assertEquals(
+            at(2026, Calendar.JULY, 25, 16),
+            TaskTime.defaultDue(at(2026, Calendar.JULY, 25, 14, 59)),
+        )
+        // 21:00 has not arrived yet, so this still lands tonight.
+        assertEquals(
+            at(2026, Calendar.JULY, 25, 22),
+            TaskTime.defaultDue(at(2026, Calendar.JULY, 25, 20, 45)),
+        )
+    }
+
+    @Test fun default_due_gives_up_on_today_once_the_clock_reads_nine() {
+        val tomorrowMorning = at(2026, Calendar.JULY, 26, 8)
+        assertEquals(tomorrowMorning, TaskTime.defaultDue(at(2026, Calendar.JULY, 25, 21, 0)))
+        assertEquals(tomorrowMorning, TaskTime.defaultDue(at(2026, Calendar.JULY, 25, 22, 30)))
+        assertEquals(tomorrowMorning, TaskTime.defaultDue(at(2026, Calendar.JULY, 25, 23, 59)))
+    }
+
+    /** Past midnight it is a new day, so "in an hour" is back on. */
+    @Test fun default_due_comes_back_after_midnight() {
+        assertEquals(
+            at(2026, Calendar.JULY, 25, 1),
+            TaskTime.defaultDue(at(2026, Calendar.JULY, 25, 0, 20)),
+        )
+    }
+
+    /**
+     * The point of rounding to the nearest hour rather than down: a default you
+     * are about to be nagged about is no use.
+     */
+    @Test fun default_due_is_never_less_than_half_an_hour_away() {
         for (hour in 0..23) {
-            for (minute in listOf(0, 59)) {
-                val now = at(2026, Calendar.JULY, 25, hour, minute)
+            for (minute in listOf(0, 1, 29, 30, 31, 59)) {
+                val nowish = at(2026, Calendar.JULY, 25, hour, minute)
+                val ahead = TaskTime.defaultDue(nowish) - nowish
                 assertTrue(
-                    "tonight must stay ahead of $hour:$minute",
-                    tonightAt(now) > now,
+                    "at $hour:$minute the default was only ${ahead / 60_000} min out",
+                    ahead >= 30 * 60_000L,
                 )
             }
         }
     }
 
-    @Test fun default_due_is_the_next_whole_hour_three_hours_out() {
-        assertEquals(at(2026, Calendar.JULY, 25, 17), TaskTime.defaultDue(now))
+    @Test fun default_due_always_lands_on_a_whole_hour() {
+        for (hour in 0..23) {
+            val due = TaskTime.defaultDue(at(2026, Calendar.JULY, 25, hour, 37))
+            assertEquals("at $hour:37", 0, TaskTime.minuteOf(due))
+        }
     }
 
     @Test fun steppers_move_the_field_they_name() {
@@ -200,12 +291,35 @@ class TaskTimeTest {
         assertEquals(30, TaskTime.daysInMonth(september))
     }
 
-    @Test fun today_label_is_a_shouty_stamp() {
-        assertEquals("SAT 25 JUL", TaskTime.todayLabel(now))
+    /**
+     * Counts calendar months, not 30-day steps: the last hour of July and the
+     * first of August are one month apart, however close together they are.
+     */
+    @Test fun the_month_offset_counts_months() {
+        assertEquals(0, TaskTime.monthOffsetOf(at(2026, Calendar.JULY, 31, 23), now))
+        assertEquals(1, TaskTime.monthOffsetOf(at(2026, Calendar.AUGUST, 1, 0), now))
+        assertEquals(-1, TaskTime.monthOffsetOf(at(2026, Calendar.JUNE, 30, 9), now))
+        assertEquals(7, TaskTime.monthOffsetOf(at(2027, Calendar.FEBRUARY, 3, 9), now))
+        assertEquals(-12, TaskTime.monthOffsetOf(at(2025, Calendar.JULY, 25, 9), now))
     }
 
-    @Test fun later_today_is_always_in_the_future() {
-        val later = TaskTime.quickPicks(now).first { it.key == "later" }
-        assertTrue(later.whenMillis > now)
+    /**
+     * The offset only earns its keep if [TaskTime.monthStart] undoes it — that
+     * round trip is what puts the edit sheet's calendar on the task's own month.
+     */
+    @Test fun the_month_offset_round_trips_through_month_start() {
+        listOf(
+            at(2026, Calendar.JULY, 25, 14) to "July 2026",
+            at(2026, Calendar.NOVEMBER, 9, 14) to "November 2026",
+            at(2027, Calendar.JANUARY, 1, 8) to "January 2027",
+            at(2025, Calendar.DECEMBER, 31, 8) to "December 2025",
+        ).forEach { (due, expected) ->
+            val opened = TaskTime.monthStart(now, TaskTime.monthOffsetOf(due, now))
+            assertEquals(expected, TaskTime.monthTitle(opened))
+        }
+    }
+
+    @Test fun today_label_is_a_shouty_stamp() {
+        assertEquals("SAT 25 JUL", TaskTime.todayLabel(now))
     }
 }

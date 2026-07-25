@@ -94,7 +94,11 @@ object ReminderNotifier {
         val notification = NotificationCompat.Builder(context, ReminderContract.CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(task.name)
-            .setContentText(if (task.dueMillis < now) "Was due $due" else due)
+            // Always the present tense, late or not: the notification is here
+            // *because* the thing still wants doing, and "Was due" reads like a
+            // report on something already gone. The list rows keep "Was due …" —
+            // there, being late is the fact worth stating.
+            .setContentText("Is due $due")
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setOngoing(true)

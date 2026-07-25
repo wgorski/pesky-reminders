@@ -81,6 +81,30 @@ class ReminderModelTest {
         assertEquals("Snooze + Done", 2, n.notification.actions.size)
     }
 
+    private fun postedText(): String? =
+        active()!!.notification.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+
+    @Test fun the_notification_says_when_the_task_is_due() {
+        deliver(ReminderContract.ACTION_FIRE)
+        assertNotNull("precondition: posted", active())
+        val text = postedText()
+        assertTrue("expected an 'Is due …' line, got: $text", text!!.startsWith("Is due "))
+    }
+
+    /** Even late, it stays in the present tense — it is still asking to be done. */
+    @Test fun a_late_notification_does_not_say_was_due() {
+        TaskStore.clear(context)
+        taskId = TaskStore.add(
+            context, "Buy milk", System.currentTimeMillis() - 60_000L, Repeat.ONCE,
+        ).id
+        deliver(ReminderContract.ACTION_FIRE)
+        assertNotNull("precondition: posted", active())
+
+        val text = postedText()
+        assertTrue("expected an 'Is due …' line, got: $text", text!!.startsWith("Is due "))
+        assertFalse("got: $text", text.contains("Was due"))
+    }
+
     @Test fun the_notification_uses_our_own_small_icon() {
         deliver(ReminderContract.ACTION_FIRE)
         val n = active()
@@ -555,6 +579,278 @@ class ReminderModelTest {
             "no alarm may outlive the task it belongs to",
             am.nextAlarmClock,
         )
+    }
+
+    // ---- a snooze must not drag the whole cycle with it ----------------------
+
+    /** Seeds a daily task whose slot is [minutesAgo] minutes in the past. */
+    private fun seedDailyDueAt(minutesAgo: Int): Long {
+        TaskStore.clear(context)
+        val slot = System.currentTimeMillis() - minutesAgo * 60_000L
+        taskId = TaskStore.add(context, "Water the monstera", slot, Repeat.DAILY).id
+        return slot
+    }
+
+    private fun daysBetween(from: Long, to: Long) = (to - from).toDouble() / 86_400_000.0
+
+    @Test fun snoozing_a_repeater_remembers_the_slot_it_came_from() {
+        val slot = seedDailyDueAt(5)
+
+        Reminders.snooze(context, taskId, 30)
+        Thread.sleep(200)
+
+        val snoozed = stored()
+        assertEquals("the slot must be parked, not lost", slot, snoozed.anchorMillis)
+        assertTrue(
+            "and this firing must have moved forward",
+            snoozed.dueMillis > System.currentTimeMillis(),
+        )
+    }
+
+    /**
+     * The change this all exists for: snoozing this morning's buzz must not shift
+     * tomorrow's. Counting from the snooze would drag a 9am daily to 9:30 for good.
+     */
+    @Test fun finishing_a_snoozed_repeater_counts_from_the_slot_not_the_snooze() {
+        val slot = seedDailyDueAt(5)
+        Reminders.snooze(context, taskId, 30)
+        Thread.sleep(200)
+
+        Reminders.toggle(context, taskId)
+        Thread.sleep(200)
+
+        val rolled = stored()
+        assertNull("the anchor is spent once the cycle turns over", rolled.anchorMillis)
+        assertEquals(
+            "tomorrow must be one day on from the original slot",
+            1.0,
+            daysBetween(slot, rolled.dueMillis),
+            0.01,
+        )
+    }
+
+    @Test fun snoozing_twice_keeps_the_first_slot() {
+        val slot = seedDailyDueAt(5)
+
+        Reminders.snooze(context, taskId, 30)
+        Thread.sleep(200)
+        Reminders.snooze(context, taskId, 15)
+        Thread.sleep(200)
+
+        assertEquals("the second snooze must not re-anchor", slot, stored().anchorMillis)
+    }
+
+    @Test fun snoozing_a_one_off_records_no_anchor() {
+        TaskStore.clear(context)
+        taskId = TaskStore.add(
+            context, "Buy milk", System.currentTimeMillis() - 60_000L, Repeat.ONCE,
+        ).id
+
+        Reminders.snooze(context, taskId, 30)
+        Thread.sleep(200)
+
+        assertNull("a one-off has no cycle to protect", stored().anchorMillis)
+    }
+
+    @Test fun the_anchor_survives_a_reload_from_disk() {
+        val slot = seedDailyDueAt(5)
+        Reminders.snooze(context, taskId, 30)
+        Thread.sleep(200)
+
+        TaskStore.forgetForTest()
+
+        assertEquals(slot, TaskStore.find(context, taskId)!!.anchorMillis)
+    }
+
+    // ---- ticking off early must not skip a cycle ----------------------------
+
+    @Test fun done_on_a_repeater_that_is_not_due_yet_does_nothing() {
+        TaskStore.clear(context)
+        val due = System.currentTimeMillis() + 2 * 3_600_000L
+        taskId = TaskStore.add(context, "Water the monstera", due, Repeat.DAILY).id
+
+        val outcome = Reminders.toggle(context, taskId)
+        Thread.sleep(200)
+
+        assertEquals(
+            "the refusal has to be reported, or the UI cannot explain itself",
+            ToggleOutcome.NOT_DUE_YET,
+            outcome,
+        )
+        val after = stored()
+        assertEquals("it must not roll forward a cycle you can still act on", due, after.dueMillis)
+        assertFalse("and it must not be marked done either", after.done)
+        assertNull(after.anchorMillis)
+    }
+
+    @Test fun a_tick_that_lands_reports_that_it_changed_something() {
+        TaskStore.clear(context)
+        taskId = TaskStore.add(
+            context, "Book dentist", System.currentTimeMillis() + 60_000L, Repeat.ONCE,
+        ).id
+        assertEquals(ToggleOutcome.CHANGED, Reminders.toggle(context, taskId))
+        // And again, reopening it.
+        assertEquals(ToggleOutcome.CHANGED, Reminders.toggle(context, taskId))
+    }
+
+    @Test fun ticking_a_task_that_is_already_gone_reports_it_missing() {
+        Reminders.delete(context, taskId)
+        assertEquals(ToggleOutcome.MISSING, Reminders.toggle(context, taskId))
+    }
+
+    @Test fun a_repeater_whose_slot_has_come_reports_that_it_rolled() {
+        seedDailyDueAt(1)
+        assertEquals(ToggleOutcome.CHANGED, Reminders.toggle(context, taskId))
+    }
+
+    /** Only repeaters are protected — finishing a one-off early is just finishing it. */
+    @Test fun done_on_a_one_off_that_is_not_due_yet_still_finishes_it() {
+        TaskStore.clear(context)
+        taskId = TaskStore.add(
+            context, "Book dentist", System.currentTimeMillis() + 2 * 3_600_000L, Repeat.ONCE,
+        ).id
+
+        Reminders.toggle(context, taskId)
+        Thread.sleep(200)
+
+        assertTrue(stored().done)
+    }
+
+    /**
+     * The guard reads the *slot*, not the fire time, so a task you snoozed a minute
+     * ago can still be finished — its slot has passed even though the snooze has not.
+     */
+    @Test fun a_snoozed_repeater_can_still_be_finished_early() {
+        val slot = seedDailyDueAt(1)
+        Reminders.snooze(context, taskId, 30)
+        Thread.sleep(200)
+        assertTrue("precondition: the snoozed firing is ahead", stored().dueMillis > System.currentTimeMillis())
+
+        Reminders.toggle(context, taskId)
+        Thread.sleep(200)
+
+        assertEquals(
+            "it must roll forward from the slot",
+            1.0,
+            daysBetween(slot, stored().dueMillis),
+            0.01,
+        )
+    }
+
+    // ---- editing an existing task -------------------------------------------
+
+    @Test fun an_edit_clears_the_snooze_anchor() {
+        seedDailyDueAt(5)
+        Reminders.snooze(context, taskId, 30)
+        Thread.sleep(200)
+        assertNotNull("precondition: anchored", stored().anchorMillis)
+
+        Reminders.update(
+            context,
+            taskId,
+            "Water the monstera",
+            System.currentTimeMillis() + 3_600_000L,
+            Repeat.DAILY,
+        )
+        Thread.sleep(200)
+
+        assertNull("the time just picked IS the new slot", stored().anchorMillis)
+    }
+
+    @Test fun an_edit_keeps_the_id_the_notification_is_built_on() {
+        Reminders.update(
+            context, taskId, "Buy oat milk", System.currentTimeMillis() + 120_000L, Repeat.WEEKLY,
+        )
+        val task = stored()
+        assertEquals("the id doubles as the notification id — it must not move", taskId, task.id)
+        assertEquals("Buy oat milk", task.name)
+        assertEquals(Repeat.WEEKLY, task.repeat)
+    }
+
+    @Test fun moving_a_task_forward_re_arms_the_alarm() {
+        val am = context.getSystemService(AlarmManager::class.java)
+        val target = System.currentTimeMillis() + 45 * 60_000L
+
+        Reminders.update(context, taskId, stored().name, target, Repeat.ONCE)
+        Thread.sleep(300)
+
+        val next = am.nextAlarmClock
+        assertNotNull("an edit into the future must arm an alarm", next)
+        val delta = Math.abs(next!!.triggerTime - target)
+        assertTrue("alarm within 2s of the new time (delta=$delta ms)", delta < 2_000L)
+    }
+
+    /** An alarm set in the past goes off the instant it is armed. */
+    @Test fun moving_a_task_into_the_past_arms_nothing() {
+        ReminderScheduler.schedule(context, stored())
+
+        Reminders.update(
+            context, taskId, stored().name, System.currentTimeMillis() - 60_000L, Repeat.ONCE,
+        )
+        Thread.sleep(300)
+
+        val am = context.getSystemService(AlarmManager::class.java)
+        assertNull("no alarm may be armed in the past", am.nextAlarmClock)
+    }
+
+    @Test fun an_edit_that_moves_a_task_forward_clears_its_notification() {
+        deliver(ReminderContract.ACTION_FIRE)
+        assertNotNull("precondition: posted", active())
+
+        Reminders.update(
+            context, taskId, stored().name, System.currentTimeMillis() + 3_600_000L, Repeat.ONCE,
+        )
+        Thread.sleep(400)
+
+        assertNull("what it was pestering about no longer applies", active())
+    }
+
+    /**
+     * The one that matters. Opening an overdue task and pressing Save — even with
+     * nothing changed — must not clear a reminder the user is not allowed to
+     * dismiss. The naive version of [Reminders.update] cancelled unconditionally
+     * and defeated the whole app with a no-op.
+     */
+    @Test fun an_edit_that_leaves_a_task_overdue_keeps_its_notification() {
+        TaskStore.clear(context)
+        taskId = TaskStore.add(
+            context, "Buy milk", System.currentTimeMillis() - 60_000L, Repeat.ONCE,
+        ).id
+        deliver(ReminderContract.ACTION_FIRE)
+        assertNotNull("precondition: posted", active())
+
+        Reminders.update(context, taskId, "Buy oat milk", stored().dueMillis, Repeat.ONCE)
+        Thread.sleep(400)
+
+        val n = active()
+        assertNotNull("an overdue task's pester must survive its own edit", n)
+        assertEquals(
+            "and must be re-posted under the new name",
+            "Buy oat milk",
+            n!!.notification.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString(),
+        )
+    }
+
+    @Test fun editing_a_done_task_arms_nothing() {
+        TaskStore.replace(context, stored().copy(done = true))
+
+        Reminders.update(
+            context, taskId, "Book dentist", System.currentTimeMillis() + 3_600_000L, Repeat.ONCE,
+        )
+        Thread.sleep(300)
+
+        val am = context.getSystemService(AlarmManager::class.java)
+        assertNull("a finished task must not be re-armed by an edit", am.nextAlarmClock)
+        assertTrue("and it must stay done", stored().done)
+        assertEquals("Book dentist", stored().name)
+    }
+
+    @Test fun editing_something_already_gone_is_harmless() {
+        Reminders.delete(context, taskId)
+        Reminders.update(
+            context, taskId, "Ghost", System.currentTimeMillis() + 60_000L, Repeat.ONCE,
+        )
+        assertNull(TaskStore.find(context, taskId))
     }
 
     @Test fun tasks_survive_a_reload_from_disk() {

@@ -8,10 +8,11 @@ An Android app (Kotlin + Jetpack Compose) for reminders you **cannot swipe away*
 only the notification's own **Snooze** (+5 min) and **Done** actions can clear it.
 
 It started as a one-screen POC proving that notification model, and now carries the
-full **"Pesky Reminders v2"** Claude Design UI on top of it: a task list with
-Overdue / Up next / collapsible Done sections, and a "New pester" bottom sheet
-that picks a time three ways (shortcut chips, scroll wheels, or a calendar) plus a
-repeat rule.
+full **"Pesky Reminders v2"** Claude Design UI on top of it: a task list banded by
+when things are due (Overdue / Today / Tomorrow / This week / Next week / Later)
+plus a collapsible Done section, and one bottom sheet that both adds
+and edits — a name, a time picked either on scroll wheels or on a calendar, and a
+repeat rule. **Tapping a task opens it for editing**; there is no long-press menu.
 
 Mechanism: `setOngoing(true)` + a `deleteIntent` that re-posts the notification
 whenever it is dismissed. `AlarmManager.setAlarmClock()` schedules the fire.
@@ -83,11 +84,11 @@ adb shell am start -n com.peskyreminders.poc/.MainActivity
 
 Two tiers, and they cover different things.
 
-**Deterministic (JVM, ~6s, no device)** — `app/src/test/`, 148 tests. Robolectric hosts
+**Deterministic (JVM, ~9s, no device)** — `app/src/test/`, 174 tests. Robolectric hosts
 the real composables, and every screen takes `nowMillis` as a parameter instead of
 reading the clock, so each expected label is a fixed string. `TaskTimeTest` covers the
-date maths; `TaskListScreenTest` and `AddTaskSheetTest` drive every control in the UI.
-Tests pin `TimeZone` to UTC so they pass on any machine.
+date maths; `TaskListScreenTest`, `AddTaskSheetTest` and `EditTaskSheetTest` drive
+every control in the UI. Tests pin `TimeZone` to UTC so they pass on any machine.
 
 - These run **automatically after every Edit/Write** to a `.kt`/`.kts`/manifest file,
   via the `PostToolUse` hook in `.claude/settings.json`
@@ -96,17 +97,17 @@ Tests pin `TimeZone` to UTC so they pass on any machine.
 - They also gate `git push` via `.githooks/pre-push`. Enable once per clone:
   `git config core.hooksPath .githooks`. Bypass with `git push --no-verify`.
 
-**Device (emulator)** — `app/src/androidTest/`, 35 tests. `ReminderModelTest` is the
+**Device (emulator)** — `app/src/androidTest/`, 56 tests. `ReminderModelTest` is the
 real proof of the notification model: it fires the notification's own delete-intent,
 which is exactly what the OS sends on a swipe. Note it calls `TaskStore.clear()`, so
 running it **wipes the task list on the device**.
 
 Known limitation: Compose's synthetic pointer injection (`performClick()`) does not
-reach into the add sheet's scrolling body under Robolectric — the taps land on
-nothing, though they work fine on a device. `AddTaskSheetTest` therefore asserts the
-control is displayed and then fires its click action directly. That covers state and
-visibility but **not hit-test geometry**, which is why the emulator pass below still
-matters.
+reach into the task sheet's scrolling body under Robolectric — the taps land on
+nothing, though they work fine on a device. `AddTaskSheetTest` and
+`EditTaskSheetTest` therefore assert the control is displayed and then fire its click
+action directly. That covers state and visibility but **not hit-test geometry**, which
+is why the emulator pass below still matters.
 
 ## Required workflow — verify every change on the emulator
 
@@ -192,8 +193,8 @@ Notes:
 ```
 app/src/main/java/com/peskyreminders/poc/
   MainActivity.kt       # edge-to-edge host; hydrates the store, asks for POST_NOTIFICATIONS
-  Task.kt               # Task + Repeat model
-  TaskTime.kt           # PURE date maths & labels (no Android deps) — unit-tested
+  Task.kt               # Task + Repeat model, incl. the snooze anchor (slotMillis)
+  TaskTime.kt           # PURE date maths, labels & DueGroup banding — unit-tested
   TaskStore.kt          # SharedPreferences-backed list, observable via mutableStateOf
   Settings.kt           # user prefs (nag on/off + interval), same lazy-hydrate pattern
   Reminders.kt          # facade where the store and the alarm/notification plumbing meet
@@ -210,11 +211,11 @@ app/src/main/java/com/peskyreminders/poc/
     Common.kt           # PeskyType text styles, pressable/tap modifiers
     PeskySheet.kt       # shared bottom-sheet chrome (scrim, entrance, tap-swallow)
     PeskyApp.kt         # root: sheet + done-section state, the "now" ticker
-    TaskListScreen.kt   # header, Overdue / Up next / Done sections, FAB
-    AddTaskSheet.kt     # "New pester" sheet: chips, wheels, calendar, repeat, save
+    TaskListScreen.kt   # header, the DueGroup bands + Done section, FAB
+    TaskSheet.kt        # add AND edit in one: name, repeat, save, the action rows
+    TimePickers.kt      # the wheels and the month grid — shared by both paths
     SettingsSheet.kt    # nag on/off + interval
-    SnoozeSheet.kt      # "Snooze until"/"Reschedule": presets + 15 min–72 hr wheel
-    TaskActionsSheet.kt # the long-press menu: reschedule, mark done/undone
+    SnoozeSheet.kt      # "Snooze until" — notification only: presets + 15 min–72 hr wheel
     ConfirmSheet.kt     # shared "are you sure?" chrome — every delete goes through it
     ClearDoneSheet.kt   # confirms CLEAR (the whole done list)
     DeleteTaskSheet.kt  # confirms deleting one task — the only exit for a repeater
@@ -227,11 +228,11 @@ app/src/main/res/
 app/src/test/               # deterministic JVM suite (Robolectric-hosted Compose)
   ReminderContractTest.kt   #   scheduling arithmetic
   TaskTimeTest.kt           #   date maths and labels
-  ui/TaskListScreenTest.kt  #   list sections, toggles, FAB
+  ui/TaskListScreenTest.kt  #   the date bands, toggles, FAB
   ui/AddTaskSheetTest.kt    #   every control in the add sheet
+  ui/EditTaskSheetTest.kt   #   seeding, one-field edits, the action rows
   ui/SettingsSheetTest.kt   #   the nag switch and interval field
   ui/SnoozeSheetTest.kt     #   presets, wheel, readout, commit
-  ui/TaskActionsSheetTest.kt #  the long-press menu
   ui/ClearDoneSheetTest.kt  #   the clear-done confirmation
   ui/DeleteTaskSheetTest.kt #   the delete-one-task confirmation
   SettingsTest.kt           #   interval clamping
@@ -293,14 +294,87 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   `Reminders.toggle` is the single place it is implemented — the notification's Done
   action goes through the same call. The corollary bit us: because it never lands in
   the done list, `clearDone` could never reach it, so a repeating task was impossible
-  to get rid of. `Reminders.delete` is its only exit — don't remove it.
+  to get rid of. `Reminders.delete` is its only exit — don't remove it, and it is why
+  the edit sheet offers Delete **only** on a repeater.
+- **Ticking off a repeater before its slot has come does nothing — and says so.**
+  Rolling it forward would throw away the occurrence you could still act on, so
+  `Reminders.toggle` returns early. A refusal that looked identical to a broken
+  control was worse than no control, so `toggle` returns a `ToggleOutcome` and
+  `PeskyApp` raises a toast ("Not due until Tomorrow, 8:00 AM.") on `NOT_DUE_YET`.
+  It states the fact and stops there — the earlier version explained the consequence
+  too and read like an argument. The *rule* stays in `toggle`; the UI only reports it.
+  Don't re-derive the condition at the call site — two copies will drift. This is the
+  app's only toast, and it is system-styled rather than Pesky-styled.
+- **A snooze moves one firing, not the whole cycle.** `Task.dueMillis` is when it
+  fires; `Task.anchorMillis` holds the recurring slot it came from while a repeater is
+  snoozed, and `Task.slotMillis` is the accessor everything should reason with.
+  Snoozing a daily 9am reminder to 9:35 must leave tomorrow at 9am — counting the next
+  occurrence from the snooze would drag the task later every single day. The first
+  snooze wins; `toggle` clears the anchor as the cycle turns; an explicit edit clears
+  it too, because the time you just picked *is* the new slot. Both the "is it due yet"
+  test and the next-occurrence step read `slotMillis`, which is what keeps "snooze it,
+  then finish it a minute later" working.
+- **The list's sections come from `TaskTime.groupOf`, and the enum order IS the
+  screen order.** `DueGroup` is declared chronologically and `TaskListScreen` lays
+  the list out by walking `DueGroup.entries`, skipping empty bands — so adding a band
+  means putting it in the right place in the enum, and nothing else. Three things to
+  keep in mind: overdue wins over everything, so a task due at 09:00 leaves TODAY the
+  moment it is late; TODAY and TOMORROW are tested *before* the weeks, which is what
+  stops a Saturday's Sunday being filed under NEXT WEEK; and THIS WEEK is legitimately
+  empty on the last day of a week, since everything left is today or tomorrow.
+- **Week boundaries follow the locale, not our calendar grid.** `startOfWeek` asks
+  `Calendar.getFirstDayOfWeek()` — Sunday in the US, Monday across most of Europe —
+  because "this week" is a claim about the user's calendar. The month grid in the task
+  sheet is still hardcoded Sunday-first, so **the two can disagree**; unify them if it
+  ever shows. Tests that touch banding must pin `Locale` as well as `TimeZone`.
+- **Keep `dueMillis` meaning "when it fires".** The anchor was added *beside* it
+  rather than by turning `dueMillis` into the slot, precisely so every existing
+  consumer — the list's sections and sort, the notification text, the scheduler —
+  stayed correct without an audit. Don't invert that.
+- **Adding and editing are one sheet.** `TaskSheet` takes a nullable `existing` task;
+  `AddTaskSheet` and `EditTaskSheet` are thin wrappers over it. Two copies of a
+  two-way time picker would drift apart at the first fix to either one. The draft
+  state is `rememberSaveable(existing?.id)` — keyed on the task, so it resets rather
+  than leaks if the sheet is reused.
+- **`Reminders.update` must not cancel a notification it is leaving overdue.** The
+  three branches are not symmetrical: moved into the future cancels the notification
+  and arms an alarm; still in the past cancels only the *alarm* and **re-posts** a
+  notification that is already showing, so it picks up the new name and keeps
+  nagging; done cancels all three. The naive version cancelled unconditionally,
+  which meant opening an overdue task and pressing Save with nothing changed
+  silently cleared a reminder the user is not allowed to dismiss — the whole premise
+  of the app, defeated by a no-op. There is an instrumented test for both halves.
+- **The editor's Delete is not part of the draft.** Name/time/repeat wait for Save;
+  Delete acts immediately and drops unsaved edits. There is deliberately no
+  mark-as-done row — the list's check circle does that in one tap, and offering it
+  twice invited the question of whether it saved the draft on the way past.
+- **The task sheet only just fits, so watch its height.** `PeskySheet` caps itself at
+  **95%** of the screen and the body scrolls past that. With a repeater's Delete row
+  the content came to ~723dp against a 766dp ceiling on a 440dpi 2340px phone — a 5%
+  margin that any font scale over 1.2 ate, and the few dp of scroll that resulted read
+  as broken rather than as a scroller: the first field label slides under the header
+  and a strip of dead space opens above the footer. The margin now comes from the 95%
+  cap plus `PeskyWheel`'s 148dp height (one number, shared with the snooze sheet).
+  **Anything new in that body has to pay for itself** — check it at 440dpi with font
+  scale 1.3, which is the case that broke.
+- **The notification is always present tense.** "Is due Today, 09:00", late or not; it
+  is on screen *because* the thing still wants doing. The list rows keep "Was due …",
+  where being late is the fact worth stating. Instrumented tests pin both.
+- **The sheet always has a time chosen.** `dueMillis` is non-nullable in `TaskSheet`:
+  an edit starts on the task's own time, a new pester on `TaskTime.defaultDue` (about
+  an hour out, on the hour; tomorrow 08:00 once the clock reads 21:00). That is what
+  lets the pickers always show a selection and leaves the name as the only thing Save
+  waits for. There is no "nothing picked yet" state left to render.
 - **Never schedule an alarm in the past** — `setAlarmClock` fires it immediately.
-  `Reminders.toggle` cancels instead when the new due time has already passed.
-- **Snooze/reschedule counts from the clock, never from the task's due time.**
-  One rule for both entry points, and it means rescheduling something due tomorrow
-  can pull it *earlier*. `SnoozeSheet` deliberately has no "start from" parameter:
-  the preview and `Reminders.snooze` must read the same clock, or the readout
-  promises a time the button does not deliver. That bug has already happened once.
+  `Reminders.toggle` and `Reminders.update` cancel instead when the new due time has
+  already passed. Note `Reminders.create` does *not*: a new task with a past time is
+  taken as "pester me now".
+- **Snooze counts from the clock, never from the task's due time.** `SnoozeSheet`
+  deliberately has no "start from" parameter: the preview and `Reminders.snooze` must
+  read the same clock, or the readout promises a time the button does not deliver.
+  That bug has already happened once. It is now reachable only from the
+  notification's Snooze action — the task list picks absolute times instead, which is
+  why the sheet no longer takes its title and labels as parameters.
 - **A notification action that shows UI must be an activity PendingIntent.**
   Android 12+ blocks notification trampolines, so Snooze cannot go through
   `ReminderReceiver` — it opens `SnoozeActivity` directly. Done stays a broadcast
@@ -318,7 +392,15 @@ does NOT fire the delete-intent, so those clear the notification without re-post
 
 ## Known gaps
 
-- **No edit.** The design has none, so a typo means delete and re-add.
+- **A one-off cannot be deleted directly.** The edit sheet offers Delete only on a
+  repeater, so getting rid of an unwanted one-off means ticking it off and then
+  clearing the done list — two steps and a trip through a section you may have
+  collapsed.
+- **The wheels cannot always point at the task.** The DAY column spans a fortnight, so
+  anything further out — or already past — shows nothing selected there; the MIN column
+  is quarter-hours, so a snoozed task sitting at :07 shows nothing selected either. The
+  footer readout always states the real due time and the calendar opens on the task's
+  own month, so nothing is misreported; the wheel just cannot point at it.
 - **No undo.** Neither `delete` nor `clearDone` keeps a tombstone, which is why both
   go through `ConfirmSheet`. Any further destructive action should confirm the same
   way, or add real undo and drop the sheets.

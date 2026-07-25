@@ -89,14 +89,16 @@ object TaskStore {
     private fun serialise(tasks: List<Task>): String {
         val array = JSONArray()
         tasks.forEach {
-            array.put(
-                JSONObject()
-                    .put("id", it.id)
-                    .put("name", it.name)
-                    .put("due", it.dueMillis)
-                    .put("repeat", it.repeat.label)
-                    .put("done", it.done)
-            )
+            val o = JSONObject()
+                .put("id", it.id)
+                .put("name", it.name)
+                .put("due", it.dueMillis)
+                .put("repeat", it.repeat.label)
+                .put("done", it.done)
+            // Left out entirely when unset, so a task that has never been snoozed
+            // serialises exactly as it did before the field existed.
+            it.anchorMillis?.let { anchor -> o.put("anchor", anchor) }
+            array.put(o)
         }
         return array.toString()
     }
@@ -112,6 +114,9 @@ object TaskStore {
                 dueMillis = o.optLong("due"),
                 repeat = Repeat.fromLabel(o.optString("repeat")),
                 done = o.optBoolean("done"),
+                // has() rather than optLong's 0 default: a missing anchor means
+                // "never snoozed", not "the epoch".
+                anchorMillis = if (o.has("anchor")) o.optLong("anchor") else null,
             )
         }
     }

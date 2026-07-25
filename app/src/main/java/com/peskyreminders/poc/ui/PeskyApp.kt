@@ -1,6 +1,7 @@
 package com.peskyreminders.poc.ui
 
 import android.text.format.DateFormat
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +20,8 @@ import androidx.compose.ui.platform.LocalContext
 import com.peskyreminders.poc.Reminders
 import com.peskyreminders.poc.Settings
 import com.peskyreminders.poc.TaskStore
+import com.peskyreminders.poc.TaskTime
+import com.peskyreminders.poc.ToggleOutcome
 import kotlinx.coroutines.delay
 
 @Composable
@@ -28,9 +31,8 @@ fun PeskyApp() {
 
     var sheetOpen by rememberSaveable { mutableStateOf(false) }
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
-    // Long-pressed task, then the same task once Snooze is chosen from its menu.
-    var actionsTaskId by rememberSaveable { mutableStateOf<Int?>(null) }
-    var snoozeTaskId by rememberSaveable { mutableStateOf<Int?>(null) }
+    // The tapped task, then the same task once Delete is chosen from its sheet.
+    var editTaskId by rememberSaveable { mutableStateOf<Int?>(null) }
     var deleteTaskId by rememberSaveable { mutableStateOf<Int?>(null) }
     var doneExpanded by rememberSaveable { mutableStateOf(false) }
     var clearDoneOpen by rememberSaveable { mutableStateOf(false) }
@@ -69,12 +71,24 @@ fun PeskyApp() {
                 doneExpanded = doneExpanded,
                 onToggleDoneSection = { doneExpanded = !doneExpanded },
                 onToggleTask = { id ->
-                    Reminders.toggle(context, id)
+                    // A repeater that is not due yet refuses the tick, on purpose —
+                    // rolling it forward would skip the occurrence still ahead. Say
+                    // so, or the circle is a control that visibly does nothing.
+                    if (Reminders.toggle(context, id) == ToggleOutcome.NOT_DUE_YET) {
+                        TaskStore.tasks.firstOrNull { it.id == id }?.let { task ->
+                            Toast.makeText(
+                                context,
+                                "Not due until " +
+                                    TaskTime.formatFull(task.dueMillis, now, use24h) + ".",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    }
                     now = System.currentTimeMillis()
                 },
                 onAdd = { sheetOpen = true },
                 onOpenSettings = { settingsOpen = true },
-                onTaskActions = { actionsTaskId = it },
+                onOpenTask = { editTaskId = it },
                 onClearDone = { clearDoneOpen = true },
             )
 
@@ -89,22 +103,21 @@ fun PeskyApp() {
                 )
             }
 
-            actionsTaskId?.let { id ->
+            editTaskId?.let { id ->
                 TaskStore.tasks.firstOrNull { it.id == id }?.let { task ->
-                    TaskActionsSheet(
+                    EditTaskSheet(
                         task = task,
                         nowMillis = now,
                         use24h = use24h,
-                        onReschedule = { actionsTaskId = null; snoozeTaskId = id },
-                        onToggle = {
-                            Reminders.toggle(context, id)
+                        onDismiss = { editTaskId = null },
+                        onSave = { name, dueMillis, repeat ->
+                            Reminders.update(context, id, name, dueMillis, repeat)
                             now = System.currentTimeMillis()
-                            actionsTaskId = null
+                            editTaskId = null
                         },
-                        onDelete = { actionsTaskId = null; deleteTaskId = id },
-                        onDismiss = { actionsTaskId = null },
+                        onDelete = { editTaskId = null; deleteTaskId = id },
                     )
-                } ?: run { actionsTaskId = null }
+                } ?: run { editTaskId = null }
             }
 
             deleteTaskId?.let { id ->
@@ -119,25 +132,6 @@ fun PeskyApp() {
                         },
                     )
                 } ?: run { deleteTaskId = null }
-            }
-
-            snoozeTaskId?.let { id ->
-                TaskStore.tasks.firstOrNull { it.id == id }?.let { task ->
-                    SnoozeSheet(
-                        taskName = task.name,
-                        nowMillis = now,
-                        use24h = use24h,
-                        title = "Reschedule",
-                        readoutPrefix = "Moves to",
-                        confirmLabel = "Reschedule",
-                        onDismiss = { snoozeTaskId = null },
-                        onSnooze = { minutes ->
-                            Reminders.snooze(context, id, minutes)
-                            now = System.currentTimeMillis()
-                            snoozeTaskId = null
-                        },
-                    )
-                } ?: run { snoozeTaskId = null }
             }
 
             if (sheetOpen) {

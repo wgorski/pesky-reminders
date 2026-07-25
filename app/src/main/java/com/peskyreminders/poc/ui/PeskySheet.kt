@@ -79,7 +79,15 @@ fun PeskySheet(
         }
 
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            val sheetMax = maxHeight * 0.9f
+            // 95%, not 90%. The task sheet with a repeater's Delete row came to
+            // roughly 723dp against a 766dp ceiling on a 440dpi 2340px phone — a
+            // 5% margin, which any font scale above 1.2 ate. The body then became
+            // scrollable by a few dp, which reads as broken rather than as a
+            // scroller: the first field label slides under the header and a strip
+            // of dead space opens above the footer. The scroll stays as the
+            // fallback for genuinely small screens; it should just never be the
+            // normal case.
+            val sheetMax = maxHeight * 0.95f
             AnimatedVisibility(
                 visibleState = appear,
                 modifier = Modifier.align(Alignment.BottomCenter),

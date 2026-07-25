@@ -1,11 +1,22 @@
 package com.peskyreminders.poc
 
 import java.util.Calendar
-import kotlin.math.ceil
 import kotlin.math.roundToInt
 
-/** A "When?" shortcut in the add sheet: a stable key, a label, and the time it means. */
-data class QuickPick(val key: String, val label: String, val whenMillis: Long)
+/**
+ * The bands the task list groups by, in the order they appear on screen.
+ *
+ * Every active task falls in exactly one, so the sections come out in
+ * chronological order without any extra sorting.
+ */
+enum class DueGroup(val label: String) {
+    OVERDUE("OVERDUE"),
+    TODAY("TODAY"),
+    TOMORROW("TOMORROW"),
+    THIS_WEEK("THIS WEEK"),
+    NEXT_WEEK("NEXT WEEK"),
+    LATER("LATER"),
+}
 
 /**
  * Pure date maths and labelling, ported from the design's script block.
@@ -27,8 +38,11 @@ object TaskTime {
 
     const val DAY_MILLIS = 86_400_000L
 
-    /** What the "Tonight" chip means. The only place the hour is written down. */
-    private const val TONIGHT_HOUR = 20
+    /** Past this hour, "in an hour" is the middle of the night — see [defaultDue]. */
+    private const val LATE_HOUR = 21
+
+    /** Where [defaultDue] lands instead, on the following morning. */
+    private const val MORNING_HOUR = 8
 
     // ---- field access -------------------------------------------------------
 
@@ -43,6 +57,35 @@ object TaskTime {
     /** Whole days from [nowMillis]'s calendar day to [millis]'s. Negative is the past. */
     fun dayDiff(millis: Long, nowMillis: Long): Int =
         ((startOfDay(millis) - startOfDay(nowMillis)).toDouble() / DAY_MILLIS).roundToInt()
+
+    /**
+     * Whole calendar weeks from [nowMillis]'s week to [millis]'s, counted from
+     * whichever day the locale starts its weeks on.
+     *
+     * Divided and rounded rather than subtracted in days, so the hour that a DST
+     * change adds or removes inside a week cannot shift the answer.
+     */
+    fun weekDiff(millis: Long, nowMillis: Long): Int =
+        ((startOfWeek(millis) - startOfWeek(nowMillis)).toDouble() / (7 * DAY_MILLIS)).roundToInt()
+
+    /**
+     * Which section of the list a task belongs in.
+     *
+     * Anything whose moment has passed is [DueGroup.OVERDUE] regardless of the day,
+     * so a task due at 09:00 leaves "today" the instant it is late. The two named
+     * days are tested before the weeks, which is what stops a Saturday's "tomorrow"
+     * — already in next week — from being filed under [DueGroup.NEXT_WEEK].
+     */
+    fun groupOf(dueMillis: Long, nowMillis: Long): DueGroup = when {
+        dueMillis < nowMillis -> DueGroup.OVERDUE
+        dayDiff(dueMillis, nowMillis) == 0 -> DueGroup.TODAY
+        dayDiff(dueMillis, nowMillis) == 1 -> DueGroup.TOMORROW
+        else -> when (weekDiff(dueMillis, nowMillis)) {
+            0 -> DueGroup.THIS_WEEK
+            1 -> DueGroup.NEXT_WEEK
+            else -> DueGroup.LATER
+        }
+    }
 
     // ---- labelling ----------------------------------------------------------
 
@@ -112,37 +155,33 @@ object TaskTime {
 
     // ---- picking a time -----------------------------------------------------
 
-    /** Where the sheet's steppers start from when nothing has been chosen yet. */
-    fun defaultDue(nowMillis: Long): Long = cal(nowMillis).apply {
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-        add(Calendar.HOUR_OF_DAY, 3)
-    }.timeInMillis
-
-    /** The six "When?" shortcut chips, in the order the design lays them out. */
-    fun quickPicks(nowMillis: Long): List<QuickPick> {
-        val later = cal(nowMillis).apply {
-            add(Calendar.HOUR_OF_DAY, 3)
-            val minute = get(Calendar.MINUTE)
+    /**
+     * What the new-pester sheet opens on: **about an hour from now, on the hour**.
+     *
+     * Rounded to the *nearest* hour rather than up or down, so the default is never
+     * less than half an hour away (which "in an hour" at 14:59 would otherwise be)
+     * and never more than an hour and a half.
+     *
+     * Once the clock reads [LATE_HOUR] the answer stops being useful — an hour from
+     * 22:30 is the middle of the night — so it becomes [MORNING_HOUR] tomorrow.
+     *
+     * This is a real preselection, not just where the steppers start: the sheet is
+     * saveable as soon as it has a name.
+     */
+    fun defaultDue(nowMillis: Long): Long {
+        if (hourOf(nowMillis) >= LATE_HOUR) {
+            return cal(nowMillis).atMidnight().apply {
+                add(Calendar.DAY_OF_MONTH, 1)
+                set(Calendar.HOUR_OF_DAY, MORNING_HOUR)
+            }.timeInMillis
+        }
+        return cal(nowMillis).apply {
+            add(Calendar.HOUR_OF_DAY, 1)
+            if (get(Calendar.MINUTE) >= 30) add(Calendar.HOUR_OF_DAY, 1)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
-            add(Calendar.MINUTE, ceil(minute / 15.0).toInt() * 15)
         }.timeInMillis
-
-        // Sunday == 0, matching the design's Date#getDay().
-        val weekday = cal(nowMillis).get(Calendar.DAY_OF_WEEK) - 1
-        val untilSaturday = ((6 - weekday + 7) % 7).orAWeek()
-        val untilMonday = ((8 - weekday) % 7).orAWeek()
-        return listOf(
-            QuickPick("later", "Later today", later),
-            QuickPick("tonight", "Tonight", todayOrTomorrowAt(nowMillis, TONIGHT_HOUR)),
-            QuickPick("tom-am", "Tomorrow morning", at(nowMillis, 1, 9)),
-            QuickPick("tom-pm", "Tomorrow evening", at(nowMillis, 1, 19)),
-            QuickPick("weekend", "This weekend", at(nowMillis, untilSaturday, 10)),
-            QuickPick("nextweek", "Next week", at(nowMillis, untilMonday, 9)),
-        )
     }
 
     fun plusDays(millis: Long, days: Int): Long =
@@ -183,6 +222,21 @@ object TaskTime {
         add(Calendar.MONTH, monthOffset)
     }.timeInMillis
 
+    /**
+     * Whole calendar months from [nowMillis] to [millis], so the picker can open
+     * on the month a task is actually due in rather than on this one. Negative
+     * for a task whose date has already gone by.
+     *
+     * Counts months, not 30-day steps: the 31st of one month and the 1st of the
+     * next are one apart, however few hours separate them.
+     */
+    fun monthOffsetOf(millis: Long, nowMillis: Long): Int {
+        val then = cal(millis)
+        val now = cal(nowMillis)
+        return (then.get(Calendar.YEAR) - now.get(Calendar.YEAR)) * 12 +
+            (then.get(Calendar.MONTH) - now.get(Calendar.MONTH))
+    }
+
     fun monthTitle(monthStartMillis: Long): String {
         val c = cal(monthStartMillis)
         return "${MONTHS_FULL[c.get(Calendar.MONTH)]} ${c.get(Calendar.YEAR)}"
@@ -200,6 +254,18 @@ object TaskTime {
     private fun cal(millis: Long): Calendar =
         Calendar.getInstance().apply { timeInMillis = millis }
 
+    /**
+     * Midnight on the first day of [millis]'s week.
+     *
+     * Takes the first day from the locale via [Calendar.getFirstDayOfWeek] — Sunday
+     * in the US, Monday across most of Europe — because "this week" is a claim about
+     * the user's calendar, not ours. Note the month grid in the task sheet is still
+     * hardcoded Sunday-first; the two can disagree.
+     */
+    private fun startOfWeek(millis: Long): Long = cal(millis).atMidnight().apply {
+        add(Calendar.DAY_OF_MONTH, -((get(Calendar.DAY_OF_WEEK) - firstDayOfWeek + 7) % 7))
+    }.timeInMillis
+
     private fun Calendar.atMidnight(): Calendar = apply {
         set(Calendar.HOUR_OF_DAY, 0)
         set(Calendar.MINUTE, 0)
@@ -207,25 +273,4 @@ object TaskTime {
         set(Calendar.MILLISECOND, 0)
     }
 
-    /** Midnight [dayOffset] days from [base], at [hour] o'clock. */
-    private fun at(base: Long, dayOffset: Int, hour: Int): Long = cal(base).atMidnight().apply {
-        add(Calendar.DAY_OF_MONTH, dayOffset)
-        set(Calendar.HOUR_OF_DAY, hour)
-    }.timeInMillis
-
-    /**
-     * Today at [hour] while that is still ahead, otherwise tomorrow at [hour].
-     *
-     * Compares the actual instant rather than the hour-of-day. The version that
-     * tested `HOUR_OF_DAY >= 19` for a chip pointing at 20:00 sent "Tonight" to
-     * tomorrow for the whole 19:00–20:00 hour, while tonight was still to come.
-     * Deriving the roll from the chip's own hour is what stops the two drifting.
-     */
-    private fun todayOrTomorrowAt(nowMillis: Long, hour: Int): Long {
-        val today = at(nowMillis, 0, hour)
-        return if (today > nowMillis) today else at(nowMillis, 1, hour)
-    }
-
-    /** The design's `|| 7`: "this Saturday" never means today. */
-    private fun Int.orAWeek() = if (this == 0) 7 else this
 }

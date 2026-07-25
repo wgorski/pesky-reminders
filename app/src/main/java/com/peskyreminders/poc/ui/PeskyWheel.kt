@@ -49,7 +49,10 @@ fun PeskyWheel(
     label: (Int) -> String,
     onPick: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    height: Dp = 168.dp,
+    // 148dp shows three rungs and a bit. It was 168 in the task sheet and 148 in
+    // the snooze sheet; one number for both, and the 20dp goes towards keeping the
+    // task sheet inside its ceiling — see the note in [PeskySheet].
+    height: Dp = 148.dp,
     showTitle: Boolean = true,
     aside: ((Int) -> String?)? = null,
 ) {

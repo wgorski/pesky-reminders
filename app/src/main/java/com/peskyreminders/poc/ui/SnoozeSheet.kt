@@ -35,11 +35,14 @@ private val R12 = RoundedCornerShape(12.dp)
 /**
  * Presets for the common cases, a quarter-hour wheel for the rest.
  *
- * Used from two places with different wording — a snooze from the notification,
- * a reschedule from the task list — but one rule underneath: the duration always
- * counts from now, matching [com.peskyreminders.poc.Reminders.snooze]. There is
- * deliberately no way to pass a different starting point, because a preview that
- * can disagree with what the button does is worse than no preview.
+ * Raised by the notification's own Snooze action, and nowhere else — the task
+ * list used to re-word it as "Reschedule", which is why it once took its title
+ * and labels as parameters; tapping a task now picks an absolute time instead.
+ *
+ * The duration always counts from now, matching
+ * [com.peskyreminders.poc.Reminders.snooze]. There is deliberately no way to
+ * pass a different starting point, because a preview that can disagree with what
+ * the button does is worse than no preview.
  */
 @Composable
 fun SnoozeSheet(
@@ -48,15 +51,12 @@ fun SnoozeSheet(
     use24h: Boolean,
     onDismiss: () -> Unit,
     onSnooze: (minutes: Int) -> Unit,
-    title: String = "Snooze until",
-    readoutPrefix: String = "Back at",
-    confirmLabel: String = "Snooze",
 ) {
     var minutes by rememberSaveable { mutableIntStateOf(SnoozeOptions.DEFAULT_MINUTES) }
     val backAt = nowMillis + minutes * 60_000L
 
     PeskySheet(
-        title = title,
+        title = "Snooze until",
         onDismiss = onDismiss,
         footer = {
             Column(
@@ -77,7 +77,7 @@ fun SnoozeSheet(
                         modifier = Modifier.size(16.dp),
                     )
                     Text(
-                        "$readoutPrefix ${TaskTime.formatFull(backAt, nowMillis, use24h)}",
+                        "Back at ${TaskTime.formatFull(backAt, nowMillis, use24h)}",
                         modifier = Modifier.testTag("back-at"),
                         fontFamily = DmSans,
                         fontSize = 15.sp,
@@ -95,7 +95,7 @@ fun SnoozeSheet(
                         .background(PeskyColors.Accent),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(confirmLabel, style = PeskyType.Action, color = PeskyColors.Text)
+                    Text("Snooze", style = PeskyType.Action, color = PeskyColors.Text)
                 }
             }
         },
@@ -140,7 +140,6 @@ fun SnoozeSheet(
                 },
                 onPick = { minutes = SnoozeOptions.WHEEL[it] },
                 modifier = Modifier.fillMaxWidth(),
-                height = 148.dp,
             )
         }
     }

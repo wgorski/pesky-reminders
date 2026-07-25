@@ -106,39 +106,52 @@ class AddTaskSheetTest {
         tapTag("$wheel-$index")
     }
 
+    /**
+     * A time other than the preselected one, for the tests that only care about
+     * what happens after one is chosen. The wheels work from the current selection
+     * (15:00), so picking hour 20 lands on 8pm tonight.
+     */
+    private fun pickATime() = tapWheel("HOUR", 20)
+
+    // ---- the preselected time -----------------------------------------------
+
+    /** 14:20 + about an hour, on the hour. Nothing to pick before you can save. */
+    @Test fun the_sheet_opens_on_a_time_already_chosen() {
+        showSheet()
+        dueLabel().assertTextEquals("Today, 3:00 PM")
+    }
+
+    @Test fun saving_without_touching_the_time_takes_the_default() {
+        showSheet()
+        typeName()
+        tapTag("save-button")
+        val expected = Calendar.getInstance().apply {
+            set(2026, Calendar.JULY, 25, 15, 0, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        assertEquals(expected, savedDue)
+    }
+
     // ---- gating -------------------------------------------------------------
 
-    @Test fun save_is_inert_until_a_name_and_a_time_are_both_given() {
+    @Test fun save_is_inert_until_a_name_is_given() {
         showSheet()
-        dueLabel().assertTextEquals("Pick a time above")
         compose.onNodeWithTag("save-button").assertHasNoClickAction()
 
         typeName()
-        compose.onNodeWithTag("save-button")
-            .assertHasNoClickAction() // a name alone is not enough
-
-        tap("Tonight")
         compose.onNodeWithTag("save-button").assertHasClickAction()
+
+        pickATime()
+        dueLabel().assertTextEquals("Today, 8:00 PM")
         tapTag("save-button")
         assertEquals("Feed the sourdough", savedName)
     }
 
-    // ---- quick pick chips ---------------------------------------------------
-
-    @Test fun every_quick_pick_chip_sets_its_own_time() {
-        val expected = listOf(
-            "Later today" to "Today, 5:30 PM",      // 14:20 + 3h, rounded up to the quarter
-            "Tonight" to "Today, 8:00 PM",
-            "Tomorrow morning" to "Tomorrow, 9:00 AM",
-            "Tomorrow evening" to "Tomorrow, 7:00 PM",
-            "This weekend" to "Sat 1 Aug, 10:00 AM", // today IS Saturday — never today
-            "Next week" to "Mon, 9:00 AM",
-        )
+    /** Adding says "Pester me"; only the edit sheet says "Save changes". */
+    @Test fun the_button_asks_to_be_pestered() {
         showSheet()
-        expected.forEach { (chip, label) ->
-            tap(chip)
-            dueLabel().assertTextEquals(label)
-        }
+        compose.onNodeWithText("Pester me").assertExists()
+        compose.onNodeWithText("Save changes").assertDoesNotExist()
     }
 
     // ---- mode tabs ----------------------------------------------------------
@@ -160,9 +173,9 @@ class AddTaskSheetTest {
 
     @Test fun each_wheel_column_sets_its_own_field() {
         showSheet()
-        // Nothing chosen yet, so the wheels start from "now, on the hour, +3h".
+        // Each column moves only its own field, working from the 15:00 default.
         tapWheel("DAY", 3)
-        dueLabel().assertTextEquals("Tue, 5:00 PM")
+        dueLabel().assertTextEquals("Tue, 3:00 PM")
 
         tapWheel("HOUR", 21)
         dueLabel().assertTextEquals("Tue, 9:00 PM")
@@ -171,22 +184,13 @@ class AddTaskSheetTest {
         dueLabel().assertTextEquals("Tue, 9:30 PM")
     }
 
-    @Test fun using_a_wheel_clears_the_chip_selection() {
-        showSheet()
-        tap("Tonight")
-        dueLabel().assertTextEquals("Today, 8:00 PM")
-
-        tapWheel("HOUR", 6)
-        dueLabel().assertTextEquals("Today, 6:00 AM")
-    }
-
     // ---- calendar -----------------------------------------------------------
 
     @Test fun calendar_day_cells_set_the_date_and_keep_the_time() {
         showSheet()
         tap("Calendar")
         tapTag("day-30")
-        dueLabel().assertTextEquals("Thu, 5:00 PM")
+        dueLabel().assertTextEquals("Thu, 3:00 PM")
     }
 
     @Test fun past_days_are_shown_but_not_selectable() {
@@ -197,7 +201,7 @@ class AddTaskSheetTest {
         compose.onNodeWithTag("day-24").performScrollTo().assertIsDisplayed().assertHasNoClickAction()
         compose.onNodeWithTag("day-25").performScrollTo().assertIsDisplayed().assertHasClickAction()
         compose.onNodeWithTag("day-26").performScrollTo().assertIsDisplayed().assertHasClickAction()
-        dueLabel().assertTextEquals("Pick a time above")
+        dueLabel().assertTextEquals("Today, 3:00 PM")
     }
 
     @Test fun month_arrows_page_the_grid_both_ways() {
@@ -217,10 +221,10 @@ class AddTaskSheetTest {
         showSheet()
         tap("Calendar")
         tap("−1 hr")
+        dueLabel().assertTextEquals("Today, 2:00 PM")
+        tap("+1 hr")
+        tap("+1 hr")
         dueLabel().assertTextEquals("Today, 4:00 PM")
-        tap("+1 hr")
-        tap("+1 hr")
-        dueLabel().assertTextEquals("Today, 6:00 PM")
     }
 
     @Test fun time_of_day_chips_snap_to_their_hour() {
@@ -254,7 +258,7 @@ class AddTaskSheetTest {
     private fun saveWithRepeat(pill: String): Repeat? {
         showSheet()
         typeName()
-        tap("Tonight")
+        pickATime()
         tap(pill)
         tapTag("save-button")
         return savedRepeat
@@ -263,7 +267,7 @@ class AddTaskSheetTest {
     @Test fun repeat_defaults_to_once() {
         showSheet()
         typeName()
-        tap("Tonight")
+        pickATime()
         tapTag("save-button")
         assertEquals(Repeat.ONCE, savedRepeat)
     }
@@ -283,17 +287,29 @@ class AddTaskSheetTest {
     @Test fun a_repeat_pill_can_be_switched_back_to_once() {
         showSheet()
         typeName()
-        tap("Tonight")
+        pickATime()
         tap("Monthly")
         tap("Once")
         tapTag("save-button")
         assertEquals(Repeat.ONCE, savedRepeat)
     }
 
+    /**
+     * All four rules stay reachable on one line. "Monthly" used to wrap onto a
+     * second row, which grew the footer by a step.
+     */
+    @Test fun every_repeat_rule_sits_in_the_row() {
+        showSheet()
+        Repeat.entries.forEach { option ->
+            compose.onNodeWithTag("repeat-${option.label}").assertExists()
+        }
+    }
+
     @Test fun saving_reports_the_name_the_time_and_the_repeat() {
         showSheet()
         typeName("Water the monstera")
-        tap("Tomorrow morning")
+        tapWheel("DAY", 1)
+        tapWheel("HOUR", 9)
         tap("Weekly")
         tapTag("save-button")
 
@@ -309,7 +325,7 @@ class AddTaskSheetTest {
     @Test fun the_name_is_trimmed_before_saving() {
         showSheet()
         typeName("   Pay the water bill   ")
-        tap("Tonight")
+        pickATime()
         tapTag("save-button")
         assertEquals("Pay the water bill", savedName)
     }

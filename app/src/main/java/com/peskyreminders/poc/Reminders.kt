@@ -3,6 +3,24 @@ package com.peskyreminders.poc
 import android.content.Context
 
 /**
+ * What [Reminders.toggle] did, so a caller can explain itself when nothing moved.
+ *
+ * The rule for *whether* a tick is allowed stays in [Reminders.toggle] — this is
+ * how the outcome gets back out, rather than having the UI re-derive the same
+ * condition and drift from it.
+ */
+enum class ToggleOutcome {
+    /** The task moved: completed, reopened, or rolled to its next occurrence. */
+    CHANGED,
+
+    /** A repeater whose slot has not come. Nothing happened, deliberately. */
+    NOT_DUE_YET,
+
+    /** No such task — deleted from under the tap. */
+    MISSING,
+}
+
+/**
  * The one place where the task list and the alarm/notification plumbing meet.
  *
  * Both the UI and [ReminderReceiver] go through here, so ticking a task off in
@@ -102,17 +120,43 @@ object Reminders {
      * Tick a task off. A repeating task is never "done" — it rolls forward to
      * its next occurrence, matching the design. A one-off flips between done
      * and not.
+     *
+     * Two things it deliberately will not do:
+     *
+     * - **Roll a repeater forward before its slot has come.** Ticking off a daily
+     *   task that is not due until tomorrow used to skip tomorrow, throwing away
+     *   the occurrence you could still act on. It is now a no-op — nothing is
+     *   cancelled, nothing is rescheduled.
+     * - **Count the next occurrence from a snooze.** The cycle steps from
+     *   [Task.slotMillis], so snoozing this morning's 9am buzz to 9:35 leaves
+     *   tomorrow's at 9am.
+     *
+     * Both tests read the slot rather than the fire time, which is what keeps
+     * "snooze it, then finish it a minute later" working: the slot has passed even
+     * though the snoozed firing has not.
+     *
+     * Returns what happened. A refused tick is otherwise indistinguishable from a
+     * broken one, and the check circle is a real tap target that would just sit
+     * there saying nothing — the caller uses [ToggleOutcome.NOT_DUE_YET] to say why.
      */
-    fun toggle(context: Context, taskId: Int) {
-        val task = TaskStore.find(context, taskId) ?: return
+    fun toggle(context: Context, taskId: Int): ToggleOutcome {
+        val task = TaskStore.find(context, taskId) ?: return ToggleOutcome.MISSING
         val now = System.currentTimeMillis()
+
+        if (!task.done && task.repeats && task.slotMillis > now) {
+            return ToggleOutcome.NOT_DUE_YET
+        }
+
         ReminderNotifier.cancel(context, taskId)
         ReminderScheduler.cancelNag(context, taskId)
 
         val next = if (!task.done && task.repeats) {
-            task.copy(dueMillis = TaskTime.nextOccurrence(task.dueMillis, task.repeat, now))
+            task.copy(
+                dueMillis = TaskTime.nextOccurrence(task.slotMillis, task.repeat, now),
+                anchorMillis = null,
+            )
         } else {
-            task.copy(done = !task.done)
+            task.copy(done = !task.done, anchorMillis = null)
         }
         TaskStore.replace(context, next)
 
@@ -120,6 +164,65 @@ object Reminders {
         // an alarm in the past would go off the instant it is set.
         if (next.done || next.dueMillis <= now) ReminderScheduler.cancel(context, taskId)
         else ReminderScheduler.schedule(context, next)
+
+        return ToggleOutcome.CHANGED
+    }
+
+    /**
+     * Apply an edit from the task sheet — a new name, due time and repeat rule,
+     * committed together. The id is kept, so the notification id and the alarm
+     * request codes derived from it stay valid.
+     *
+     * The notification handling is the delicate part, and it is deliberately not
+     * symmetrical:
+     *
+     * - **Moved into the future.** Whatever it was pestering about no longer
+     *   applies, so the notification and its nag chain go, and the alarm is armed.
+     * - **Still in the past.** The alarm cannot be armed — it would fire the
+     *   instant it was set — and a notification already on screen has to
+     *   *survive*. Cancelling it here meant opening an overdue task and pressing
+     *   Save without changing a thing silently cleared a reminder the user is not
+     *   allowed to dismiss, which is the whole point of the app. It is re-posted
+     *   instead, so it picks up the new name, and the nagging carries on.
+     * - **Done.** Nothing to fire and nothing to show.
+     *
+     * Nothing is ever *posted* from here. Saving a time that has already passed
+     * leaves an overdue row and no notification, exactly as un-ticking a task
+     * does; [restoreAll] stays the only place a past-due task is surfaced
+     * without being asked for.
+     */
+    fun update(context: Context, taskId: Int, name: String, dueMillis: Long, repeat: Repeat) {
+        val task = TaskStore.find(context, taskId) ?: return
+        val now = System.currentTimeMillis()
+        val showing = ReminderNotifier.isShowing(context, taskId)
+        // An edit names the slot outright, so any snooze anchor it was carrying is
+        // spent — the time the user just picked *is* the new cycle.
+        val next = task.copy(
+            name = name,
+            dueMillis = dueMillis,
+            repeat = repeat,
+            anchorMillis = null,
+        )
+        TaskStore.replace(context, next)
+
+        when {
+            next.done -> {
+                ReminderNotifier.cancel(context, taskId)
+                ReminderScheduler.cancel(context, taskId)
+                ReminderScheduler.cancelNag(context, taskId)
+            }
+
+            dueMillis > now -> {
+                ReminderNotifier.cancel(context, taskId)
+                ReminderScheduler.cancelNag(context, taskId)
+                ReminderScheduler.schedule(context, next)
+            }
+
+            else -> {
+                ReminderScheduler.cancel(context, taskId)
+                if (showing) notify(context, taskId)
+            }
+        }
     }
 
     /**
@@ -180,13 +283,22 @@ object Reminders {
      *
      * Because the result is always in the future, it can never schedule an alarm
      * in the past — which would fire the instant it was set.
+     *
+     * On a **repeating** task the snooze moves only this firing. The slot it came
+     * from is parked in [Task.anchorMillis] so the next occurrence still counts
+     * from there — snoozing a daily 9am reminder by half an hour does not drag
+     * every following day to 9:30. The first snooze wins: snoozing again keeps the
+     * slot already recorded rather than anchoring to the snooze.
      */
     fun snooze(context: Context, taskId: Int, minutes: Int = SnoozeOptions.DEFAULT_MINUTES) {
         val task = TaskStore.find(context, taskId) ?: return
         ReminderNotifier.cancel(context, taskId)
         ReminderScheduler.cancelNag(context, taskId)
         val from = System.currentTimeMillis()
-        val next = task.copy(dueMillis = ReminderContract.snoozeTriggerAtMillis(from, minutes))
+        val next = task.copy(
+            dueMillis = ReminderContract.snoozeTriggerAtMillis(from, minutes),
+            anchorMillis = if (task.repeats) task.slotMillis else null,
+        )
         TaskStore.replace(context, next)
         ReminderScheduler.schedule(context, next)
     }

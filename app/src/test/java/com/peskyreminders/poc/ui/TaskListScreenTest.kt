@@ -3,7 +3,6 @@ package com.peskyreminders.poc.ui
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -12,6 +11,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.peskyreminders.poc.Repeat
 import com.peskyreminders.poc.Task
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -19,6 +19,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import java.util.Calendar
+import java.util.Locale
 import java.util.TimeZone
 
 /** Drives the list screen against a frozen clock, on the JVM. */
@@ -28,8 +29,10 @@ class TaskListScreenTest {
 
     @get:Rule val compose = createComposeRule()
 
-    @Before fun fixTimeZone() {
+    /** The locale decides where a week starts, so the sections depend on it. */
+    @Before fun fixTimeZoneAndLocale() {
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+        Locale.setDefault(Locale.US)
     }
 
     /** Saturday 25 July 2026, 14:20 UTC. */
@@ -43,7 +46,7 @@ class TaskListScreenTest {
         }.timeInMillis
 
     private val toggled = mutableListOf<Int>()
-    private val actioned = mutableListOf<Int>()
+    private val opened = mutableListOf<Int>()
     private var addTapped = false
     private var sectionToggled = 0
     private var clearTapped = 0
@@ -58,7 +61,7 @@ class TaskListScreenTest {
                 onToggleDoneSection = { sectionToggled++ },
                 onToggleTask = { toggled += it },
                 onAdd = { addTapped = true },
-                onTaskActions = { actioned += it },
+                onOpenTask = { opened += it },
                 onClearDone = { clearTapped++ },
             )
         }
@@ -88,7 +91,8 @@ class TaskListScreenTest {
         show(emptyList())
         compose.onNodeWithText("Nothing to pester you about").assertExists()
         compose.onNodeWithText("OVERDUE").assertDoesNotExist()
-        compose.onNodeWithText("UP NEXT").assertDoesNotExist()
+        compose.onNodeWithText("TODAY").assertDoesNotExist()
+        compose.onNodeWithText("NEXT WEEK").assertDoesNotExist()
     }
 
     @Test fun tasks_split_by_whether_they_are_late() {
@@ -98,11 +102,82 @@ class TaskListScreenTest {
         compose.onNodeWithText("Call the vet").assertExists()
         compose.onNodeWithText("Was due Today, 9:00 AM").assertExists()
 
-        compose.onNodeWithText("UP NEXT").assertExists()
+        // 29 July is the Wednesday after this Saturday, so it opens a new week.
+        compose.onNodeWithText("NEXT WEEK").assertExists()
         compose.onNodeWithText("Feed the sourdough").assertExists()
         compose.onNodeWithText("Wed, 9:00 AM").assertExists()
 
         compose.onNodeWithText("Nothing to pester you about").assertDoesNotExist()
+    }
+
+    // ---- the date bands -----------------------------------------------------
+
+    /** Monday 27 July 2026, 09:00 — mid-week, so every band can be populated. */
+    private val monday = at(2026, Calendar.JULY, 27, 9)
+
+    private fun showFromMonday(tasks: List<Task>) {
+        compose.setContent {
+            TaskListScreen(
+                tasks = tasks,
+                nowMillis = monday,
+                use24h = false,
+                doneExpanded = false,
+                onToggleDoneSection = { sectionToggled++ },
+                onToggleTask = { toggled += it },
+                onAdd = { addTapped = true },
+                onOpenTask = { opened += it },
+                onClearDone = { clearTapped++ },
+            )
+        }
+    }
+
+    @Test fun each_band_gets_its_own_heading() {
+        showFromMonday(
+            listOf(
+                Task(1, "Late", at(2026, Calendar.JULY, 27, 8), Repeat.ONCE),
+                Task(2, "Tonight", at(2026, Calendar.JULY, 27, 20), Repeat.ONCE),
+                Task(3, "Tomorrow", at(2026, Calendar.JULY, 28, 9), Repeat.ONCE),
+                Task(4, "Thursday", at(2026, Calendar.JULY, 30, 9), Repeat.ONCE),
+                Task(5, "Next week", at(2026, Calendar.AUGUST, 4, 9), Repeat.ONCE),
+                Task(6, "August", at(2026, Calendar.AUGUST, 20, 9), Repeat.ONCE),
+            )
+        )
+        listOf("OVERDUE", "TODAY", "TOMORROW", "THIS WEEK", "NEXT WEEK", "LATER")
+            .forEach { compose.onNodeWithText(it).assertExists() }
+    }
+
+    /** A band with nothing in it must not leave a heading behind. */
+    @Test fun empty_bands_are_not_drawn() {
+        showFromMonday(listOf(Task(3, "Tomorrow", at(2026, Calendar.JULY, 28, 9), Repeat.ONCE)))
+        compose.onNodeWithText("TOMORROW").assertExists()
+        listOf("OVERDUE", "TODAY", "THIS WEEK", "NEXT WEEK", "LATER")
+            .forEach { compose.onNodeWithText(it).assertDoesNotExist() }
+    }
+
+    @Test fun the_bands_are_laid_out_in_chronological_order() {
+        showFromMonday(
+            listOf(
+                Task(6, "August", at(2026, Calendar.AUGUST, 20, 9), Repeat.ONCE),
+                Task(1, "Late", at(2026, Calendar.JULY, 27, 8), Repeat.ONCE),
+                Task(4, "Thursday", at(2026, Calendar.JULY, 30, 9), Repeat.ONCE),
+            )
+        )
+        val tops = listOf("OVERDUE", "THIS WEEK", "LATER").map {
+            compose.onNodeWithText(it).fetchSemanticsNode().positionInRoot.y
+        }
+        assertEquals("headings must run down the screen in order", tops.sorted(), tops)
+    }
+
+    /** Only the overdue band paints its rows red and prefixes "Was due". */
+    @Test fun lateness_is_marked_only_in_the_overdue_band() {
+        showFromMonday(
+            listOf(
+                Task(1, "Late", at(2026, Calendar.JULY, 27, 8), Repeat.ONCE),
+                Task(2, "Tonight", at(2026, Calendar.JULY, 27, 20), Repeat.ONCE),
+            )
+        )
+        compose.onNodeWithText("Was due Today, 8:00 AM").assertExists()
+        compose.onNodeWithText("Today, 8:00 PM").assertExists()
     }
 
     @Test fun only_repeating_tasks_carry_a_repeat_pill() {
@@ -185,33 +260,38 @@ class TaskListScreenTest {
         assertEquals("collapsing must not clear anything", 0, clearTapped)
     }
 
-    // ---- long press ---------------------------------------------------------
+    // ---- opening a task -----------------------------------------------------
 
-    @Test fun long_pressing_a_row_asks_for_its_actions() {
+    @Test fun tapping_a_row_opens_it() {
         show(listOf(overdueTask, upNextTask))
-        compose.onNodeWithTag("row-1").performSemanticsAction(SemanticsActions.OnLongClick)
-        compose.onNodeWithTag("row-2").performSemanticsAction(SemanticsActions.OnLongClick)
-        assertEquals(listOf(1, 2), actioned)
+        compose.onNodeWithTag("row-1").performClick()
+        compose.onNodeWithTag("row-2").performClick()
+        assertEquals(listOf(1, 2), opened)
     }
 
-    @Test fun a_done_row_can_be_long_pressed_too() {
+    @Test fun a_done_row_opens_too() {
         show(listOf(doneTask), doneExpanded = true)
-        compose.onNodeWithTag("row-3").performSemanticsAction(SemanticsActions.OnLongClick)
-        assertEquals(listOf(3), actioned)
+        compose.onNodeWithTag("row-3").performClick()
+        assertEquals(listOf(3), opened)
     }
 
-    @Test fun a_plain_tap_on_a_row_does_nothing() {
+    /**
+     * The check circle is a nested target inside a row that now opens the task,
+     * so a tap on it has to tick the task off and stop there. If it fell through
+     * as well, every completion would raise the edit sheet over the top of it.
+     */
+    @Test fun ticking_a_task_does_not_also_open_it() {
         show(listOf(overdueTask))
-        compose.onNodeWithTag("row-1").performSemanticsAction(SemanticsActions.OnClick)
-        assertTrue("tap is reserved; only long-press opens the menu", actioned.isEmpty())
-        assertTrue("and it must not tick the task off either", toggled.isEmpty())
+        compose.onNodeWithTag("check-1").performClick()
+        assertEquals(listOf(1), toggled)
+        assertTrue("the circle must not reach the row beneath it", opened.isEmpty())
     }
 
-    @Test fun the_long_press_is_announced_to_screen_readers() {
+    /** The long-press menu is gone — nothing should still be hiding behind one. */
+    @Test fun a_row_carries_no_long_press_action() {
         show(listOf(overdueTask))
-        val label = compose.onNodeWithTag("row-1").fetchSemanticsNode()
-            .config[SemanticsActions.OnLongClick].label
-        assertEquals("Task actions", label)
+        val config = compose.onNodeWithTag("row-1").fetchSemanticsNode().config
+        assertFalse(config.contains(SemanticsActions.OnLongClick))
     }
 
     // ---- ordering -----------------------------------------------------------
