@@ -28,9 +28,20 @@ fun PeskyApp() {
 
     var sheetOpen by rememberSaveable { mutableStateOf(false) }
     var settingsOpen by rememberSaveable { mutableStateOf(false) }
+    // Long-pressed task, then the same task once Snooze is chosen from its menu.
+    var actionsTaskId by rememberSaveable { mutableStateOf<Int?>(null) }
+    var snoozeTaskId by rememberSaveable { mutableStateOf<Int?>(null) }
+    var deleteTaskId by rememberSaveable { mutableStateOf<Int?>(null) }
     var doneExpanded by rememberSaveable { mutableStateOf(false) }
+    var clearDoneOpen by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { Settings.hydrate(context) }
+
+    // Nothing left to clear means nothing left to confirm. Unreachable today —
+    // the CLEAR label only exists while the section does — but it keeps a stale
+    // flag from raising the sheet over an empty list later on.
+    val doneCount = TaskStore.tasks.count { it.done }
+    LaunchedEffect(doneCount) { if (doneCount == 0) clearDoneOpen = false }
 
     // Overdue vs. up-next is a function of the clock, so keep it moving.
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -63,7 +74,71 @@ fun PeskyApp() {
                 },
                 onAdd = { sheetOpen = true },
                 onOpenSettings = { settingsOpen = true },
+                onTaskActions = { actionsTaskId = it },
+                onClearDone = { clearDoneOpen = true },
             )
+
+            if (clearDoneOpen && doneCount > 0) {
+                ClearDoneSheet(
+                    count = doneCount,
+                    onDismiss = { clearDoneOpen = false },
+                    onConfirm = {
+                        Reminders.clearDone(context)
+                        clearDoneOpen = false
+                    },
+                )
+            }
+
+            actionsTaskId?.let { id ->
+                TaskStore.tasks.firstOrNull { it.id == id }?.let { task ->
+                    TaskActionsSheet(
+                        task = task,
+                        nowMillis = now,
+                        use24h = use24h,
+                        onReschedule = { actionsTaskId = null; snoozeTaskId = id },
+                        onToggle = {
+                            Reminders.toggle(context, id)
+                            now = System.currentTimeMillis()
+                            actionsTaskId = null
+                        },
+                        onDelete = { actionsTaskId = null; deleteTaskId = id },
+                        onDismiss = { actionsTaskId = null },
+                    )
+                } ?: run { actionsTaskId = null }
+            }
+
+            deleteTaskId?.let { id ->
+                TaskStore.tasks.firstOrNull { it.id == id }?.let { task ->
+                    DeleteTaskSheet(
+                        task = task,
+                        onDismiss = { deleteTaskId = null },
+                        onConfirm = {
+                            Reminders.delete(context, id)
+                            now = System.currentTimeMillis()
+                            deleteTaskId = null
+                        },
+                    )
+                } ?: run { deleteTaskId = null }
+            }
+
+            snoozeTaskId?.let { id ->
+                TaskStore.tasks.firstOrNull { it.id == id }?.let { task ->
+                    SnoozeSheet(
+                        taskName = task.name,
+                        nowMillis = now,
+                        use24h = use24h,
+                        title = "Reschedule",
+                        readoutPrefix = "Moves to",
+                        confirmLabel = "Reschedule",
+                        onDismiss = { snoozeTaskId = null },
+                        onSnooze = { minutes ->
+                            Reminders.snooze(context, id, minutes)
+                            now = System.currentTimeMillis()
+                            snoozeTaskId = null
+                        },
+                    )
+                } ?: run { snoozeTaskId = null }
+            }
 
             if (sheetOpen) {
                 AddTaskSheet(

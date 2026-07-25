@@ -83,7 +83,7 @@ adb shell am start -n com.peskyreminders.poc/.MainActivity
 
 Two tiers, and they cover different things.
 
-**Deterministic (JVM, ~6s, no device)** — `app/src/test/`, 50 tests. Robolectric hosts
+**Deterministic (JVM, ~6s, no device)** — `app/src/test/`, 148 tests. Robolectric hosts
 the real composables, and every screen takes `nowMillis` as a parameter instead of
 reading the clock, so each expected label is a fixed string. `TaskTimeTest` covers the
 date maths; `TaskListScreenTest` and `AddTaskSheetTest` drive every control in the UI.
@@ -96,7 +96,7 @@ Tests pin `TimeZone` to UTC so they pass on any machine.
 - They also gate `git push` via `.githooks/pre-push`. Enable once per clone:
   `git config core.hooksPath .githooks`. Bypass with `git push --no-verify`.
 
-**Device (emulator)** — `app/src/androidTest/`, 20 tests. `ReminderModelTest` is the
+**Device (emulator)** — `app/src/androidTest/`, 35 tests. `ReminderModelTest` is the
 real proof of the notification model: it fires the notification's own delete-intent,
 which is exactly what the OS sends on a swipe. Note it calls `TaskStore.clear()`, so
 running it **wipes the task list on the device**.
@@ -132,6 +132,28 @@ function called in a loop has exhausted the process table and killed the emulato
 Do not declare a change "done" until a screenshot reflects it. A clean compile is not
 sufficient — Compose errors (bad modifier order, taps falling through to the wrong
 layer) build fine, pass the JVM suite, and only show up on a device.
+
+## Publish every finished change (standing instruction)
+
+Do not wait to be asked. Once a change is verified, the **last step of the workflow**
+is to bump the version, build the release APK, and republish it over the tunnel. A
+finished change I cannot install on my phone is not finished.
+
+```bash
+./gradlew :app:assembleRelease
+cp app/build/outputs/apk/release/pesky-reminders-$V.apk dist/pesky-reminders-$V.apk
+cp app/build/outputs/apk/release/pesky-reminders-$V.apk dist/pesky-reminders.apk
+```
+
+- Stage **both** names: the version-pinned file is immutable once its URL is out,
+  `pesky-reminders.apk` is the "latest" pointer.
+- Reuse the running `cloudflared` — a quick tunnel mints a **new hostname** on every
+  restart, so leaving it alone keeps previously shared links alive. A 502 through the
+  tunnel means the local server died, not the tunnel: restart
+  `python3 -m http.server 9999` from `dist/`.
+- Verify by downloading through the tunnel and hash-matching the staged artifact
+  before reporting the URL. Install the **release** APK on the emulator and confirm
+  `versionName` — the debug build passing is not evidence about the one being served.
 
 ## When I ask you to "expose the apk locally"
 
@@ -191,7 +213,11 @@ app/src/main/java/com/peskyreminders/poc/
     TaskListScreen.kt   # header, Overdue / Up next / Done sections, FAB
     AddTaskSheet.kt     # "New pester" sheet: chips, wheels, calendar, repeat, save
     SettingsSheet.kt    # nag on/off + interval
-    SnoozeSheet.kt      # "Snooze until": presets + quarter-hour wheel
+    SnoozeSheet.kt      # "Snooze until"/"Reschedule": presets + 15 min–72 hr wheel
+    TaskActionsSheet.kt # the long-press menu: reschedule, mark done/undone
+    ConfirmSheet.kt     # shared "are you sure?" chrome — every delete goes through it
+    ClearDoneSheet.kt   # confirms CLEAR (the whole done list)
+    DeleteTaskSheet.kt  # confirms deleting one task — the only exit for a repeater
     PeskyWheel.kt       # the shared scrolling picker column
 app/src/main/res/
   font/                     # Bricolage Grotesque + DM Sans TTFs (from Google Fonts)
@@ -205,6 +231,9 @@ app/src/test/               # deterministic JVM suite (Robolectric-hosted Compos
   ui/AddTaskSheetTest.kt    #   every control in the add sheet
   ui/SettingsSheetTest.kt   #   the nag switch and interval field
   ui/SnoozeSheetTest.kt     #   presets, wheel, readout, commit
+  ui/TaskActionsSheetTest.kt #  the long-press menu
+  ui/ClearDoneSheetTest.kt  #   the clear-done confirmation
+  ui/DeleteTaskSheetTest.kt #   the delete-one-task confirmation
   SettingsTest.kt           #   interval clamping
   SnoozeOptionsTest.kt      #   snooze durations and labels
 app/src/androidTest/...     # instrumented tests (ReminderModelTest) — the real proof
@@ -262,9 +291,16 @@ does NOT fire the delete-intent, so those clear the notification without re-post
 - **A repeating task is never "done".** Ticking it rolls it forward to the next
   occurrence; only `Repeat.ONCE` tasks flip to done. This is design behaviour, and
   `Reminders.toggle` is the single place it is implemented — the notification's Done
-  action goes through the same call.
+  action goes through the same call. The corollary bit us: because it never lands in
+  the done list, `clearDone` could never reach it, so a repeating task was impossible
+  to get rid of. `Reminders.delete` is its only exit — don't remove it.
 - **Never schedule an alarm in the past** — `setAlarmClock` fires it immediately.
   `Reminders.toggle` cancels instead when the new due time has already passed.
+- **Snooze/reschedule counts from the clock, never from the task's due time.**
+  One rule for both entry points, and it means rescheduling something due tomorrow
+  can pull it *earlier*. `SnoozeSheet` deliberately has no "start from" parameter:
+  the preview and `Reminders.snooze` must read the same clock, or the readout
+  promises a time the button does not deliver. That bug has already happened once.
 - **A notification action that shows UI must be an activity PendingIntent.**
   Android 12+ blocks notification trampolines, so Snooze cannot go through
   `ReminderReceiver` — it opens `SnoozeActivity` directly. Done stays a broadcast
@@ -282,4 +318,11 @@ does NOT fire the delete-intent, so those clear the notification without re-post
 
 ## Known gaps
 
-- **No delete or edit.** The design has neither, so neither was built.
+- **No edit.** The design has none, so a typo means delete and re-add.
+- **No undo.** Neither `delete` nor `clearDone` keeps a tombstone, which is why both
+  go through `ConfirmSheet`. Any further destructive action should confirm the same
+  way, or add real undo and drop the sheets.
+- **The section-header tap targets are smaller than 48dp.** Both the Done toggle
+  and CLEAR are ~18dp tall, because that is the height the design gives the header
+  row. Growing either one alone makes the header jump when it expands, and growing
+  both changes the section spacing throughout.

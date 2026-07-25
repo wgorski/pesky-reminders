@@ -79,6 +79,37 @@ class SnoozeSheetTest {
 
     private fun backAt() = compose.onNodeWithTag("back-at")
 
+    /** Brings a wheel entry into view without selecting it. */
+    private fun scrollToWheel(minutes: Int) {
+        val index = SnoozeOptions.WHEEL.indexOf(minutes)
+        compose.onNodeWithTag("wheel-SNOOZE").performScrollToNode(hasTestTag("SNOOZE-$index"))
+        compose.waitForIdle()
+    }
+
+    // ---- the clock time beside long durations -------------------------------
+
+    /** The clock is frozen at 14:20, so four hours out is 6:20 PM. */
+    @Test fun a_long_duration_shows_where_it_lands() {
+        show()
+        scrollToWheel(240)
+        compose.onNodeWithText("4h").assertExists()
+        compose.onNodeWithText("(6:20 PM)").assertExists()
+    }
+
+    @Test fun a_duration_landing_on_another_day_names_the_day() {
+        show()
+        scrollToWheel(30 * 60)
+        compose.onNodeWithText("30h").assertExists()
+        compose.onNodeWithText("(Tomorrow 8:20 PM)").assertExists()
+    }
+
+    @Test fun three_hours_is_left_to_speak_for_itself() {
+        show()
+        scrollToWheel(180)
+        compose.onNodeWithText("3h").assertExists()
+        compose.onNodeWithText("(5:20 PM)").assertDoesNotExist()
+    }
+
     // ---- rendering ----------------------------------------------------------
 
     @Test fun it_names_the_task_being_snoozed() {

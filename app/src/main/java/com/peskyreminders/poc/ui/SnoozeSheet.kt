@@ -33,8 +33,13 @@ import com.peskyreminders.poc.TaskTime
 private val R12 = RoundedCornerShape(12.dp)
 
 /**
- * "Snooze until" — presets for the common cases, a quarter-hour wheel for the
- * rest. Opened by the notification's Snooze action.
+ * Presets for the common cases, a quarter-hour wheel for the rest.
+ *
+ * Used from two places with different wording — a snooze from the notification,
+ * a reschedule from the task list — but one rule underneath: the duration always
+ * counts from now, matching [com.peskyreminders.poc.Reminders.snooze]. There is
+ * deliberately no way to pass a different starting point, because a preview that
+ * can disagree with what the button does is worse than no preview.
  */
 @Composable
 fun SnoozeSheet(
@@ -43,12 +48,15 @@ fun SnoozeSheet(
     use24h: Boolean,
     onDismiss: () -> Unit,
     onSnooze: (minutes: Int) -> Unit,
+    title: String = "Snooze until",
+    readoutPrefix: String = "Back at",
+    confirmLabel: String = "Snooze",
 ) {
     var minutes by rememberSaveable { mutableIntStateOf(SnoozeOptions.DEFAULT_MINUTES) }
     val backAt = nowMillis + minutes * 60_000L
 
     PeskySheet(
-        title = "Snooze until",
+        title = title,
         onDismiss = onDismiss,
         footer = {
             Column(
@@ -69,7 +77,7 @@ fun SnoozeSheet(
                         modifier = Modifier.size(16.dp),
                     )
                     Text(
-                        "Back at ${TaskTime.formatFull(backAt, nowMillis, use24h)}",
+                        "$readoutPrefix ${TaskTime.formatFull(backAt, nowMillis, use24h)}",
                         modifier = Modifier.testTag("back-at"),
                         fontFamily = DmSans,
                         fontSize = 15.sp,
@@ -87,7 +95,7 @@ fun SnoozeSheet(
                         .background(PeskyColors.Accent),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("Snooze", style = PeskyType.Action, color = PeskyColors.Text)
+                    Text(confirmLabel, style = PeskyType.Action, color = PeskyColors.Text)
                 }
             }
         },
@@ -121,6 +129,15 @@ fun SnoozeSheet(
                 count = SnoozeOptions.WHEEL.size,
                 selectedIndex = SnoozeOptions.WHEEL.indexOf(minutes),
                 label = { SnoozeOptions.label(SnoozeOptions.WHEEL[it]) },
+                // "8h" says nothing about bedtime; "8h (04:00)" does. Only worth
+                // the room once the duration is long enough to be hard to picture.
+                aside = { index ->
+                    val option = SnoozeOptions.WHEEL[index]
+                    if (!SnoozeOptions.landsAtAClockTime(option)) null
+                    else "(" + TaskTime.formatCompact(
+                        nowMillis + option * 60_000L, nowMillis, use24h,
+                    ) + ")"
+                },
                 onPick = { minutes = SnoozeOptions.WHEEL[it] },
                 modifier = Modifier.fillMaxWidth(),
                 height = 148.dp,

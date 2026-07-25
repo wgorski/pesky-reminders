@@ -100,6 +100,24 @@ object PeskyIcons {
         lineTo(6f, 18f)
     }
 
+    /**
+     * Not in the design's set — the design had no delete. Drawn to match it:
+     * 24dp canvas, 2dp stroke, straight lines over curves.
+     */
+    val Trash: ImageVector = stroked("trash") {
+        moveTo(3f, 6f); horizontalLineTo(21f)          // lid
+        moveTo(8f, 6f)                                  // handle
+        verticalLineTo(4f)
+        horizontalLineTo(16f)
+        verticalLineTo(6f)
+        moveTo(6f, 6f)                                  // tapered body
+        lineTo(7f, 21f)
+        horizontalLineTo(17f)
+        lineTo(18f, 6f)
+        moveTo(10f, 10f); verticalLineTo(17f)          // ribs
+        moveTo(14f, 10f); verticalLineTo(17f)
+    }
+
     private fun stroked(
         name: String,
         width: Float = 2f,

@@ -55,6 +55,32 @@ class TaskTimeTest {
         )
     }
 
+    /** Today needs no naming — the compact form is for labels with no room. */
+    @Test fun the_compact_label_drops_today() {
+        assertEquals(
+            "21:00",
+            TaskTime.formatCompact(at(2026, Calendar.JULY, 25, 21, 0), now, use24h = true),
+        )
+    }
+
+    @Test fun the_compact_label_keeps_the_day_when_it_is_not_today() {
+        assertEquals(
+            "Tomorrow 09:00",
+            TaskTime.formatCompact(at(2026, Calendar.JULY, 26, 9, 0), now, use24h = true),
+        )
+        assertEquals(
+            "Tue 20:00",
+            TaskTime.formatCompact(at(2026, Calendar.JULY, 28, 20, 0), now, use24h = true),
+        )
+    }
+
+    @Test fun the_compact_label_follows_the_twelve_hour_setting() {
+        assertEquals(
+            "9:00 PM",
+            TaskTime.formatCompact(at(2026, Calendar.JULY, 25, 21, 0), now, use24h = false),
+        )
+    }
+
     @Test fun day_diff_counts_calendar_days_not_elapsed_hours() {
         // 23:00 today to 01:00 tomorrow is two hours, but one day.
         val late = at(2026, Calendar.JULY, 25, 23)
@@ -102,10 +128,43 @@ class TaskTimeTest {
         assertEquals(at(2026, Calendar.JULY, 27, 9), picks.getValue("nextweek").whenMillis)
     }
 
+    private fun tonightAt(nowMillis: Long): Long =
+        TaskTime.quickPicks(nowMillis).first { it.key == "tonight" }.whenMillis
+
     @Test fun tonight_rolls_over_once_the_evening_has_started() {
         val late = at(2026, Calendar.JULY, 25, 21, 0)
-        val tonight = TaskTime.quickPicks(late).first { it.key == "tonight" }
-        assertEquals(at(2026, Calendar.JULY, 26, 20), tonight.whenMillis)
+        assertEquals(at(2026, Calendar.JULY, 26, 20), tonightAt(late))
+    }
+
+    /**
+     * The bug this replaces: the roll-over tested `HOUR_OF_DAY >= 19` while the
+     * chip pointed at 20:00, so for the whole 19:00–20:00 hour "Tonight" offered
+     * tomorrow when tonight had not happened yet. The old tests sat at 14:20 and
+     * 21:00 — either side of the only hour that was broken.
+     */
+    @Test fun tonight_still_means_tonight_during_the_hour_before_it() {
+        assertEquals(at(2026, Calendar.JULY, 25, 20), tonightAt(at(2026, Calendar.JULY, 25, 19, 36)))
+    }
+
+    @Test fun tonight_holds_until_the_last_minute_before_eight() {
+        assertEquals(at(2026, Calendar.JULY, 25, 20), tonightAt(at(2026, Calendar.JULY, 25, 19, 59)))
+    }
+
+    @Test fun tonight_rolls_the_moment_eight_arrives() {
+        assertEquals(at(2026, Calendar.JULY, 26, 20), tonightAt(at(2026, Calendar.JULY, 25, 20, 0)))
+    }
+
+    @Test fun tonight_is_never_in_the_past() {
+        // Every minute of the day, at both ends of an hour.
+        for (hour in 0..23) {
+            for (minute in listOf(0, 59)) {
+                val now = at(2026, Calendar.JULY, 25, hour, minute)
+                assertTrue(
+                    "tonight must stay ahead of $hour:$minute",
+                    tonightAt(now) > now,
+                )
+            }
+        }
     }
 
     @Test fun default_due_is_the_next_whole_hour_three_hours_out() {

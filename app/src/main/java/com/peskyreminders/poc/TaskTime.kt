@@ -27,6 +27,9 @@ object TaskTime {
 
     const val DAY_MILLIS = 86_400_000L
 
+    /** What the "Tonight" chip means. The only place the hour is written down. */
+    private const val TONIGHT_HOUR = 20
+
     // ---- field access -------------------------------------------------------
 
     fun yearOf(millis: Long) = cal(millis).get(Calendar.YEAR)
@@ -67,6 +70,18 @@ object TaskTime {
 
     fun formatFull(millis: Long, nowMillis: Long, use24h: Boolean): String =
         "${formatDay(millis, nowMillis)}, ${formatTime(millis, use24h)}"
+
+    /**
+     * Like [formatFull] but says no more than it has to: today is just a time,
+     * and there is no comma. For labels sitting alongside something else, where
+     * "Today, 9:00 PM" is three words too many.
+     */
+    fun formatCompact(millis: Long, nowMillis: Long, use24h: Boolean): String =
+        if (dayDiff(millis, nowMillis) == 0) {
+            formatTime(millis, use24h)
+        } else {
+            "${formatDay(millis, nowMillis)} ${formatTime(millis, use24h)}"
+        }
 
     /** The header stamp, e.g. "FRI 25 JUL". */
     fun todayLabel(nowMillis: Long): String {
@@ -120,11 +135,9 @@ object TaskTime {
         val weekday = cal(nowMillis).get(Calendar.DAY_OF_WEEK) - 1
         val untilSaturday = ((6 - weekday + 7) % 7).orAWeek()
         val untilMonday = ((8 - weekday) % 7).orAWeek()
-        val pastSeven = cal(nowMillis).get(Calendar.HOUR_OF_DAY) >= 19
-
         return listOf(
             QuickPick("later", "Later today", later),
-            QuickPick("tonight", "Tonight", at(nowMillis, if (pastSeven) 1 else 0, 20)),
+            QuickPick("tonight", "Tonight", todayOrTomorrowAt(nowMillis, TONIGHT_HOUR)),
             QuickPick("tom-am", "Tomorrow morning", at(nowMillis, 1, 9)),
             QuickPick("tom-pm", "Tomorrow evening", at(nowMillis, 1, 19)),
             QuickPick("weekend", "This weekend", at(nowMillis, untilSaturday, 10)),
@@ -199,6 +212,19 @@ object TaskTime {
         add(Calendar.DAY_OF_MONTH, dayOffset)
         set(Calendar.HOUR_OF_DAY, hour)
     }.timeInMillis
+
+    /**
+     * Today at [hour] while that is still ahead, otherwise tomorrow at [hour].
+     *
+     * Compares the actual instant rather than the hour-of-day. The version that
+     * tested `HOUR_OF_DAY >= 19` for a chip pointing at 20:00 sent "Tonight" to
+     * tomorrow for the whole 19:00–20:00 hour, while tonight was still to come.
+     * Deriving the roll from the chip's own hour is what stops the two drifting.
+     */
+    private fun todayOrTomorrowAt(nowMillis: Long, hour: Int): Long {
+        val today = at(nowMillis, 0, hour)
+        return if (today > nowMillis) today else at(nowMillis, 1, hour)
+    }
 
     /** The design's `|| 7`: "this Saturday" never means today. */
     private fun Int.orAWeek() = if (this == 0) 7 else this

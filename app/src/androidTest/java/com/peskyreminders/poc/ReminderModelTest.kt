@@ -145,6 +145,11 @@ class ReminderModelTest {
 
     @Test fun snooze_clears_and_reschedules_five_minutes_out() {
         val alarmManager = context.getSystemService(AlarmManager::class.java)
+        // A reminder that has actually gone off, which is when snooze is used.
+        TaskStore.clear(context)
+        taskId = TaskStore.add(
+            context, "Buy milk", System.currentTimeMillis() - 1_000L, Repeat.ONCE,
+        ).id
         deliver(ReminderContract.ACTION_FIRE)
         assertNotNull("precondition: posted", active())
         Reminders.snooze(context, taskId)
@@ -173,6 +178,10 @@ class ReminderModelTest {
     }
 
     @Test fun a_chosen_duration_is_what_the_reminder_comes_back_at() {
+        TaskStore.clear(context)
+        taskId = TaskStore.add(
+            context, "Buy milk", System.currentTimeMillis() - 1_000L, Repeat.ONCE,
+        ).id
         deliver(ReminderContract.ACTION_FIRE)
         assertNotNull("precondition: posted", active())
 
@@ -228,6 +237,10 @@ class ReminderModelTest {
     }
 
     @Test fun snooze_cancels_the_nag_and_leaves_only_the_snoozed_alarm() {
+        TaskStore.clear(context)
+        taskId = TaskStore.add(
+            context, "Buy milk", System.currentTimeMillis() - 1_000L, Repeat.ONCE,
+        ).id
         deliver(ReminderContract.ACTION_FIRE)
         Reminders.snooze(context, taskId)
         Thread.sleep(300)
@@ -284,6 +297,51 @@ class ReminderModelTest {
             .uiAutomation
             .executeShellCommand(command)
             .let { java.io.FileInputStream(it.fileDescriptor).bufferedReader().readText() }
+
+    @Test fun snoozing_something_not_yet_due_still_counts_from_now() {
+        // The fixture's task is 60s out. Five minutes means five from now, not
+        // six — the old rule counted from the due time.
+        val due = stored().dueMillis
+        Reminders.snooze(context, taskId, 5)
+        Thread.sleep(200)
+
+        val moved = stored().dueMillis
+        val outBy = Math.abs(moved - (System.currentTimeMillis() + 5 * 60_000L))
+        assertTrue("5 min from now (out by $outBy ms)", outBy < 2_000L)
+        assertTrue("must not count from the due time", moved < due + 5 * 60_000L - 30_000L)
+    }
+
+    /**
+     * The consequence of counting from the clock: a reminder that was not due for
+     * hours comes back sooner than it would have. Deliberate — one predictable
+     * rule beats a rule that depends on when the task happened to be due.
+     */
+    @Test fun rescheduling_can_pull_a_future_task_earlier() {
+        TaskStore.clear(context)
+        val tomorrow = System.currentTimeMillis() + 24 * 60 * 60_000L
+        taskId = TaskStore.add(context, "Pay the water bill", tomorrow, Repeat.ONCE).id
+
+        Reminders.snooze(context, taskId, 30)
+        Thread.sleep(200)
+
+        val moved = stored().dueMillis
+        assertTrue("it moves earlier, not later", moved < tomorrow)
+        val outBy = Math.abs(moved - (System.currentTimeMillis() + 30 * 60_000L))
+        assertTrue("and lands 30 min from now (out by $outBy ms)", outBy < 2_000L)
+    }
+
+    @Test fun snoozing_an_overdue_task_counts_from_now_too() {
+        TaskStore.clear(context)
+        taskId = TaskStore.add(
+            context, "Water the monstera", System.currentTimeMillis() - 3_600_000L, Repeat.ONCE,
+        ).id
+
+        Reminders.snooze(context, taskId, 15)
+        Thread.sleep(200)
+
+        val outBy = Math.abs(stored().dueMillis - (System.currentTimeMillis() + 15 * 60_000L))
+        assertTrue("15 min from now, not from an hour ago (out by $outBy ms)", outBy < 2_000L)
+    }
 
     // ---- the nag is configurable --------------------------------------------
 
@@ -390,6 +448,113 @@ class ReminderModelTest {
         boot()
 
         assertNull("a task already ticked off must stay quiet", active())
+    }
+
+    // ---- deleting one task --------------------------------------------------
+
+    /**
+     * The gap this closes: a repeating task rolls forward instead of completing,
+     * so it never reaches the done list and `clearDone` can never take it. Before
+     * `delete` there was no way to stop one at all.
+     */
+    @Test fun a_repeating_task_can_finally_be_got_rid_of() {
+        TaskStore.clear(context)
+        taskId = TaskStore.add(
+            context, "Feed the sourdough", System.currentTimeMillis() + 60_000L, Repeat.WEEKLY,
+        ).id
+        // Ticking it off just moves it on — proof it can never become "done".
+        Reminders.toggle(context, taskId)
+        assertNotNull("still here, rolled forward", TaskStore.find(context, taskId))
+        assertFalse("a repeating task never completes", stored().done)
+
+        Reminders.delete(context, taskId)
+
+        assertNull("delete is its only exit", TaskStore.find(context, taskId))
+        assertTrue(TaskStore.tasks.isEmpty())
+    }
+
+    @Test fun deleting_takes_the_notification_and_alarms_with_it() {
+        ReminderScheduler.schedule(context, stored())
+        ReminderScheduler.scheduleNag(context, taskId, System.currentTimeMillis() + 300_000L)
+        deliver(ReminderContract.ACTION_FIRE)
+        assertNotNull("precondition: the notification is up", active())
+
+        Reminders.delete(context, taskId)
+        Thread.sleep(300)
+
+        assertNull("the notification must go with the task", active())
+        val am = context.getSystemService(AlarmManager::class.java)
+        assertNull("no alarm may outlive the task it belongs to", am.nextAlarmClock)
+    }
+
+    @Test fun deleting_one_task_leaves_the_others_alone() {
+        val keep = taskId
+        val doomed = TaskStore.add(
+            context, "Call the vet", System.currentTimeMillis() + 120_000L, Repeat.DAILY,
+        ).id
+
+        Reminders.delete(context, doomed)
+
+        assertNull(TaskStore.find(context, doomed))
+        assertNotNull("the other task must survive", TaskStore.find(context, keep))
+    }
+
+    @Test fun deleting_something_already_gone_is_harmless() {
+        Reminders.delete(context, taskId)
+        Reminders.delete(context, taskId)
+        assertNull(TaskStore.find(context, taskId))
+    }
+
+    // ---- clearing the done list ---------------------------------------------
+
+    @Test fun clearing_done_takes_the_finished_and_leaves_the_rest() {
+        val keep = taskId
+        val finished = TaskStore.add(
+            context, "Book dentist", System.currentTimeMillis() + 60_000L, Repeat.ONCE,
+        ).id
+        TaskStore.replace(context, TaskStore.find(context, finished)!!.copy(done = true))
+
+        val cleared = Reminders.clearDone(context)
+
+        assertEquals(1, cleared)
+        assertNull("the completed task must be gone", TaskStore.find(context, finished))
+        assertNotNull("an unfinished task must survive", TaskStore.find(context, keep))
+    }
+
+    @Test fun clearing_an_all_done_list_empties_it() {
+        TaskStore.replace(context, stored().copy(done = true))
+
+        assertEquals(1, Reminders.clearDone(context))
+        assertTrue(TaskStore.tasks.isEmpty())
+    }
+
+    @Test fun clearing_nothing_is_harmless() {
+        assertEquals(0, Reminders.clearDone(context))
+        assertNotNull("an unfinished task must not be touched", TaskStore.find(context, taskId))
+    }
+
+    /**
+     * The reason [Reminders.clearDone] cancels rather than trusting `toggle`: once
+     * the task is deleted its id is unreachable, so anything still armed would sit
+     * in the alarm table firing on a task that no longer exists.
+     */
+    @Test fun clearing_takes_the_alarms_with_it() {
+        // Arm the lot behind toggle's back, the way a crash mid-tick would leave it.
+        ReminderScheduler.schedule(context, stored())
+        ReminderScheduler.scheduleNag(context, taskId, System.currentTimeMillis() + 300_000L)
+        deliver(ReminderContract.ACTION_FIRE)
+        assertNotNull("precondition: the notification is up", active())
+        TaskStore.replace(context, stored().copy(done = true))
+
+        Reminders.clearDone(context)
+        Thread.sleep(300)
+
+        assertNull("the notification must go with the task", active())
+        val am = context.getSystemService(AlarmManager::class.java)
+        assertNull(
+            "no alarm may outlive the task it belongs to",
+            am.nextAlarmClock,
+        )
     }
 
     @Test fun tasks_survive_a_reload_from_disk() {

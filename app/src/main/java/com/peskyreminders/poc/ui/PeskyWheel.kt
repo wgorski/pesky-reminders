@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -35,6 +36,10 @@ private val R8 = RoundedCornerShape(8.dp)
  *
  * [title] doubles as the test-tag prefix: the list is `wheel-$title` and each
  * row is `$title-$index`.
+ *
+ * [aside] is an optional dimmer note set beside the label — the snooze wheel uses
+ * it to spell out the clock time a long duration lands on. Return null to leave a
+ * row with just its label.
  */
 @Composable
 fun PeskyWheel(
@@ -46,6 +51,7 @@ fun PeskyWheel(
     modifier: Modifier = Modifier,
     height: Dp = 168.dp,
     showTitle: Boolean = true,
+    aside: ((Int) -> String?)? = null,
 ) {
     val state = rememberLazyListState()
     // Bring the selection into view when it moves off-screen (e.g. a chip was
@@ -91,13 +97,26 @@ fun PeskyWheel(
                         .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        label(index),
-                        fontFamily = DmSans,
-                        fontSize = 12.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                        color = PeskyColors.Text,
-                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            label(index),
+                            fontFamily = DmSans,
+                            fontSize = 12.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            color = PeskyColors.Text,
+                        )
+                        aside?.invoke(index)?.let {
+                            Text(
+                                it,
+                                fontFamily = DmSans,
+                                fontSize = 12.sp,
+                                color = PeskyColors.TextMuted,
+                            )
+                        }
+                    }
                 }
             }
         }

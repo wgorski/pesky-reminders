@@ -48,8 +48,20 @@ object PeskyColors {
     val AccentWashStrong = Color(0x33D12744) // 20%
     val AccentGlow = Color(0x2ED12744) // 18%
 
-    val Overdue = Color(0xFFFF6B6B)
-    val OverdueBorder = Color(0x47FF6B6B) // rgba(255,107,107,0.28)
+    /**
+     * Overdue is the accent, not a second red. Derived rather than duplicated so
+     * the two can never drift apart.
+     *
+     * The "OVERDUE" label and the "Was due …" line are small text, where the
+     * deep crimson reaches 3.6:1 on [Screen] rather than the 4.5:1 that small
+     * text wants — the coral it replaced managed 6.6:1. That is the cost of one
+     * red instead of two; see [OverdueText] if it turns out to be too dim.
+     */
+    val Overdue = Accent
+    val OverdueBorder = Accent.copy(alpha = 0.28f)
+
+    /** Same hue, lifted to 4.8:1 — swap the overdue text to this if 3.6 reads too dark. */
+    val OverdueText = AccentBright
     val Check = Color(0xFF5EE6B4)
     val CheckRing = Color(0xFF5A5650)
 

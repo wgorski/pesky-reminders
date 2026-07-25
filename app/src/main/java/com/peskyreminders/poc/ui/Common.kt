@@ -4,7 +4,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
@@ -105,6 +107,23 @@ fun Modifier.tap(onClick: () -> Unit): Modifier = this.clickable(
     indication = null,
     onClick = onClick,
 )
+
+/**
+ * Long-press only; a plain tap does nothing.
+ *
+ * [label] is what TalkBack announces for the gesture — without it a long-press
+ * action is invisible to anyone who cannot discover it by holding a finger down.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun Modifier.longPressable(label: String, onLongClick: () -> Unit): Modifier =
+    this.combinedClickable(
+        interactionSource = remember { MutableInteractionSource() },
+        indication = null,
+        onLongClickLabel = label,
+        onLongClick = onLongClick,
+        onClick = {},
+    )
 
 /** A rounded, optionally outlined surface — the recurring card/chip/field shape. */
 @Composable

@@ -5,8 +5,9 @@ An Android app for reminders you **cannot swipe away**.
 You add a task and pick when to be nagged. At that time a notification fires that
 you can't dismiss. The only ways to clear it are the notification's own two actions:
 
-- **Snooze** — opens a picker: 5 / 15 / 30 / 60 minutes, or a wheel of
-  quarter-hours up to 3 hours.
+- **Snooze** — opens a picker: 5 / 15 / 30 / 60 minutes, or a wheel running from
+  15 minutes to 3 days (quarter-hours early on, coarsening as it goes). Past three
+  hours each entry also shows the clock time it lands on — `4h (21:00)`.
 - **Done** — clears it for good.
 
 ## The app
@@ -15,9 +16,18 @@ you can't dismiss. The only ways to clear it are the notification's own two acti
 |-----------|------------------|-----------------|
 | Overdue / Up next / Done | shortcut chips + scroll wheels | month grid + time chips |
 
-- **Task list** — an *Overdue* section (coral), *Up next*, and a collapsible *Done*
-  section with struck-through rows. Ticking a repeating task rolls it forward to its
-  next occurrence instead of completing it.
+- **Task list** — an *Overdue* section (crimson, the same accent as everything else
+  that shouts), *Up next*, and a collapsible *Done* section with struck-through rows.
+  Ticking a repeating task rolls it forward to its next occurrence instead of
+  completing it. Rows glide between sections rather than jumping.
+- **Long-press a task** for its menu: *Reschedule* — a preset or a quarter-hour dial
+  — or mark it done / not done. Rescheduling always counts from now, so "30 minutes"
+  means half an hour from the moment you asked; on a task that was not due for hours,
+  that pulls it earlier.
+- **Delete** — also in the long-press menu. The only way to be rid of a repeating
+  task, since ticking one off just rolls it forward.
+- **CLEAR** — open the *Done* section and it offers to throw the completed list away.
+  Both deletes ask first: there is no undo anywhere in the app.
 - **New pester sheet** — a name, then a time picked whichever way suits: six shortcut
   chips (*Later today*, *Tonight*, *This weekend*, …), three scroll wheels
   (day / hour / minute), or a month calendar with an hour stepper and time-of-day
@@ -103,7 +113,7 @@ try to swipe it away — it comes back. Tap **Done** to clear it.
 ## Test
 
 ```bash
-./gradlew :app:testDebugUnitTest          # 93 deterministic tests, JVM only, ~7s
+./gradlew :app:testDebugUnitTest          # 148 deterministic tests, JVM only, ~7s
 
 # Instrumented tests need a running emulator/device.
 # (connected-test tasks use the property form, not --tests)
@@ -150,5 +160,6 @@ own keystore.
 
 ## Scope
 
-Intentionally **not** included: editing or deleting tasks — the design has neither.
+Intentionally **not** included: editing a task — the design has none, so a typo
+means delete and re-add. There is also no undo: both deletes confirm first instead.
 See `docs/` for the full spec, plan, and verification.

@@ -58,6 +58,13 @@ object TaskStore {
         commit(context, tasks.filterNot { it.id == id })
     }
 
+    /** Drop several at once — one write and one recomposition, not one per task. */
+    fun removeAll(context: Context, ids: Set<Int>) {
+        hydrate(context)
+        if (ids.isEmpty()) return
+        commit(context, tasks.filterNot { it.id in ids })
+    }
+
     /** Test seam — drops everything, on disk and in memory. */
     fun clear(context: Context) {
         hydrated = true

@@ -122,15 +122,71 @@ object Reminders {
         else ReminderScheduler.schedule(context, next)
     }
 
+    /**
+     * Remove one task outright, whatever state it is in.
+     *
+     * The only way to be rid of a repeating task. Ticking one off rolls it to its
+     * next occurrence rather than completing it (see [toggle]), so it never lands
+     * in the done list and [clearDone] can never reach it — without this it would
+     * pester forever.
+     *
+     * Cancels the same three things [clearDone] does, and for the same reason:
+     * after the task is gone its id cannot be reached again.
+     */
+    fun delete(context: Context, taskId: Int) {
+        val task = TaskStore.find(context, taskId) ?: return
+        ReminderNotifier.cancel(context, task.id)
+        ReminderScheduler.cancel(context, task.id)
+        ReminderScheduler.cancelNag(context, task.id)
+        TaskStore.remove(context, task.id)
+    }
+
+    /**
+     * Throw away every completed task, and return how many went.
+     *
+     * The first delete in the app, so it takes the belt-and-braces route: a done
+     * task should already have had its alarm, nag and notification cancelled by
+     * [toggle], but this is the last moment any of them can be reached by id. A
+     * survivor would fire on a task that no longer exists — harmless, since
+     * [notify] looks the task up and finds nothing, but it would sit in the
+     * alarm table until the next reboot.
+     *
+     * Repeating tasks are never done (see [toggle]), so this can only ever take
+     * one-offs; nothing here can roll forward and come back.
+     */
+    fun clearDone(context: Context): Int {
+        TaskStore.hydrate(context)
+        val done = TaskStore.tasks.filter { it.done }
+        if (done.isEmpty()) return 0
+        done.forEach { task ->
+            ReminderNotifier.cancel(context, task.id)
+            ReminderScheduler.cancel(context, task.id)
+            ReminderScheduler.cancelNag(context, task.id)
+        }
+        TaskStore.removeAll(context, done.map { it.id }.toSet())
+        return done.size
+    }
+
+    /**
+     * Push a reminder to [minutes] from now.
+     *
+     * Always counted from the clock, never from the task's own due time. "Snooze
+     * 15 minutes" means fifteen minutes from the moment you asked, whether the
+     * reminder has just gone off or is not due until tomorrow.
+     *
+     * Note this can move a task *earlier*: rescheduling something due tomorrow
+     * by 30 minutes brings it to half an hour from now. That is the trade for a
+     * rule you can predict without knowing when the task was due.
+     *
+     * Because the result is always in the future, it can never schedule an alarm
+     * in the past — which would fire the instant it was set.
+     */
     fun snooze(context: Context, taskId: Int, minutes: Int = SnoozeOptions.DEFAULT_MINUTES) {
         val task = TaskStore.find(context, taskId) ?: return
         ReminderNotifier.cancel(context, taskId)
         ReminderScheduler.cancelNag(context, taskId)
-        val next = task.copy(
-            dueMillis = ReminderContract.snoozeTriggerAtMillis(
-                System.currentTimeMillis(), minutes
-            )
-        )
+        val from = System.currentTimeMillis()
+        val next = task.copy(dueMillis = ReminderContract.snoozeTriggerAtMillis(from, minutes))
         TaskStore.replace(context, next)
         ReminderScheduler.schedule(context, next)
     }
