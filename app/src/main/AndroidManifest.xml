@@ -23,10 +23,10 @@
             </intent-filter>
         </activity>
 
-        <!-- Opened directly by the notification's Snooze action; notification
-             actions cannot raise UI via a receiver on Android 12+. -->
+        <!-- Opened by a tap on the notification body and by its Snooze action;
+             notification actions cannot raise UI via a receiver on Android 12+. -->
         <activity
-            android:name=".SnoozeActivity"
+            android:name=".ReminderActivity"
             android:exported="false"
             android:launchMode="singleTop"
             android:excludeFromRecents="true"

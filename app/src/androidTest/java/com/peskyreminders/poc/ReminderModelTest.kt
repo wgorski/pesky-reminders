@@ -201,6 +201,32 @@ class ReminderModelTest {
         assertTrue("Done stays a broadcast — it shows no UI", done.actionIntent.isBroadcast)
     }
 
+    /**
+     * The body used to do nothing at all — there was no contentIntent — so the
+     * only way to act on a reminder was the two small action buttons.
+     *
+     * It must not auto-cancel: tapping is not one of the two sanctioned ways to
+     * clear a notification you are not allowed to dismiss.
+     */
+    @Test fun tapping_the_notification_body_opens_the_same_sheet_as_snooze() {
+        deliver(ReminderContract.ACTION_FIRE)
+        val n = active()
+        assertNotNull("precondition: posted", n)
+
+        val open = n!!.notification.contentIntent
+        assertNotNull("the body must be tappable", open)
+        assertTrue("must be an activity; a trampoline is blocked on 12+", open.isActivity)
+
+        val snooze = n.notification.actions.first { it.title == "Snooze" }
+        assertEquals("the body and Snooze open the same sheet", snooze.actionIntent, open)
+
+        assertEquals(
+            "tapping must not clear a reminder you cannot dismiss",
+            0,
+            n.notification.flags and Notification.FLAG_AUTO_CANCEL,
+        )
+    }
+
     @Test fun a_chosen_duration_is_what_the_reminder_comes_back_at() {
         TaskStore.clear(context)
         taskId = TaskStore.add(

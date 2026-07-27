@@ -8,7 +8,8 @@ import androidx.activity.enableEdgeToEdge
 import com.peskyreminders.poc.ui.ReminderSheet
 
 /**
- * The "Snooze until" picker, opened straight from the notification action.
+ * The reminder's action sheet, opened straight from the notification — by a tap
+ * on its body or on its Snooze action.
  *
  * It has to be an activity: since Android 12 a notification action cannot hand
  * off to a background receiver that then shows UI, so there is no way to raise
@@ -17,7 +18,7 @@ import com.peskyreminders.poc.ui.ReminderSheet
  * Backing out — the close button, the scrim, or the back gesture — leaves the
  * reminder exactly as it was. Everything else in the sheet commits on the tap.
  */
-class SnoozeActivity : ComponentActivity() {
+class ReminderActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
