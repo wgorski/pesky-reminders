@@ -4,7 +4,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
@@ -74,11 +76,19 @@ object PeskyType {
 /**
  * The design's `style-active="transform:scale(…)"` — the only press feedback in
  * the whole kit, so no ripples anywhere.
+ *
+ * [onLongClick] is opt-in: pass one and the modifier upgrades to
+ * `combinedClickable`, which also publishes an `OnLongClick` semantics action so
+ * a test can fire the gesture directly. Left null, this stays a plain
+ * `clickable` and the node carries no long-press action at all — worth keeping,
+ * because a row advertising a gesture that does nothing reads as broken.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun Modifier.pressable(
     scale: Float = 0.96f,
     enabled: Boolean = true,
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit,
 ): Modifier {
     val interaction = remember { MutableInteractionSource() }
@@ -90,11 +100,23 @@ fun Modifier.pressable(
     )
     return this
         .graphicsLayer { scaleX = factor; scaleY = factor }
-        .clickable(
-            interactionSource = interaction,
-            indication = null,
-            enabled = enabled,
-            onClick = onClick,
+        .then(
+            if (onLongClick == null) {
+                Modifier.clickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    enabled = enabled,
+                    onClick = onClick,
+                )
+            } else {
+                Modifier.combinedClickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    enabled = enabled,
+                    onLongClick = onLongClick,
+                    onClick = onClick,
+                )
+            }
         )
 }
 

@@ -47,14 +47,14 @@ class ReminderActivity : ComponentActivity() {
             if (task == null) {
                 // Nothing to show for this id — e.g. it was deleted out from
                 // under us. Close rather than render a blank sheet.
-                LaunchedEffect(id) { finish() }
+                LaunchedEffect(id) { close() }
                 return@setContent
             }
             ReminderSheet(
                 taskName = task.name,
                 nowMillis = System.currentTimeMillis(),
                 use24h = DateFormat.is24HourFormat(this),
-                onDismiss = { finish() },
+                onDismiss = { close() },
                 onDone = {
                     // toggle can refuse a repeater whose slot has not come, but
                     // that cannot happen from here: a notification only exists
@@ -62,11 +62,11 @@ class ReminderActivity : ComponentActivity() {
                     // There is no PeskyApp to raise a toast on either — this
                     // activity is closing.
                     Reminders.toggle(this, id)
-                    finish()
+                    close()
                 },
                 onSnooze = { minutes ->
                     Reminders.snooze(this, id, minutes)
-                    finish()
+                    close()
                 },
             )
         }
@@ -77,4 +77,14 @@ class ReminderActivity : ComponentActivity() {
         setIntent(intent)
         taskId.intValue = intent.getIntExtra(ReminderContract.EXTRA_TASK_ID, 0)
     }
+
+    /**
+     * Every exit from the sheet, and the only one — plain `finish()` would leave
+     * this activity's own task behind.
+     *
+     * The panel lives in a task of its own (`taskAffinity=""` in the manifest),
+     * so tearing that task down is what returns the user to whatever was on
+     * screen when the notification arrived, rather than to the app.
+     */
+    private fun close() = finishAndRemoveTask()
 }

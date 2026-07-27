@@ -24,12 +24,21 @@
         </activity>
 
         <!-- Opened by a tap on the notification body and by its Snooze action;
-             notification actions cannot raise UI via a receiver on Android 12+. -->
+             notification actions cannot raise UI via a receiver on Android 12+.
+
+             taskAffinity="" is load-bearing. The launch carries
+             FLAG_ACTIVITY_NEW_TASK, and with the default affinity (the package
+             name) that made Android reuse the app's *existing* task and bring it
+             to the front — so tapping the notification hauled MainActivity up
+             behind this translucent sheet, and finishing left the user sitting in
+             the app rather than back where they were. An empty affinity gives
+             this a task of its own, always. -->
         <activity
             android:name=".ReminderActivity"
             android:exported="false"
             android:launchMode="singleTop"
             android:excludeFromRecents="true"
+            android:taskAffinity=""
             android:theme="@style/Theme.Pesky.Transparent" />
 
         <receiver

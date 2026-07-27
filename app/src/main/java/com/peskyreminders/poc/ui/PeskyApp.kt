@@ -34,6 +34,9 @@ fun PeskyApp() {
     // The tapped task, then the same task once Delete is chosen from its sheet.
     var editTaskId by rememberSaveable { mutableStateOf<Int?>(null) }
     var deleteTaskId by rememberSaveable { mutableStateOf<Int?>(null) }
+    // An overdue task tapped in the list, shown the same panel the notification
+    // raises. Separate from [editTaskId] so the two sheets can never both be up.
+    var remindTaskId by rememberSaveable { mutableStateOf<Int?>(null) }
     var doneExpanded by rememberSaveable { mutableStateOf(false) }
     var clearDoneOpen by rememberSaveable { mutableStateOf(false) }
 
@@ -89,6 +92,7 @@ fun PeskyApp() {
                 onAdd = { sheetOpen = true },
                 onOpenSettings = { settingsOpen = true },
                 onOpenTask = { editTaskId = it },
+                onRemindTask = { remindTaskId = it },
                 onClearDone = { clearDoneOpen = true },
             )
 
@@ -101,6 +105,39 @@ fun PeskyApp() {
                         clearDoneOpen = false
                     },
                 )
+            }
+
+            // The same panel the notification raises, with the same composable —
+            // two variants would drift at the first fix to either one.
+            //
+            // Only ever reached from an overdue row, which is what makes the
+            // snooze safe: the durations count from the clock, so on a task due
+            // *tomorrow* a 30-minute snooze would drag it earlier. On something
+            // already late, every duration moves it later.
+            remindTaskId?.let { id ->
+                TaskStore.tasks.firstOrNull { it.id == id }?.let { task ->
+                    ReminderSheet(
+                        taskName = task.name,
+                        nowMillis = now,
+                        use24h = use24h,
+                        onDismiss = { remindTaskId = null },
+                        onDone = {
+                            // toggle cannot refuse here: the row is overdue, so
+                            // its slot has passed. Same argument as the
+                            // notification's own Done.
+                            Reminders.toggle(context, id)
+                            now = System.currentTimeMillis()
+                            remindTaskId = null
+                        },
+                        onSnooze = { minutes ->
+                            Reminders.snooze(context, id, minutes)
+                            // Re-band the row straight away — it has just left
+                            // OVERDUE for somewhere in the future.
+                            now = System.currentTimeMillis()
+                            remindTaskId = null
+                        },
+                    )
+                } ?: run { remindTaskId = null }
             }
 
             editTaskId?.let { id ->

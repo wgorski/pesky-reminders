@@ -22,7 +22,8 @@ It arrives like any other notification — and then it stays.
 - If you leave it sitting there it **buzzes again every 5 minutes** until you deal
   with it. (You can change the interval, or switch the nagging off — see Settings.)
 - **Tap the body, or Snooze** — both open the same sheet, with every way out in one
-  place.
+  place. The sheet floats over whatever you were doing rather than opening the app,
+  and once you've chosen it gets out of the way and puts you back there.
 
 The wording stays in the present tense — *"Is due Today, 08:00"* — however late it
 is. It's on your screen because the thing still wants doing.
@@ -50,6 +51,13 @@ is never padded with empty headings.
   have to squint for.
 - **Tap the circle** to tick a task off. It slides down into *Done*, struck through.
   Tap it again to bring it back.
+- **Tap an overdue task** and you get the same sheet the notification opens — Done,
+  the four chips, the wheel. Once something is late the question is almost always
+  "finished, or not now?", so that's what the tap asks. Tapping anything that isn't
+  late opens it for editing, as before.
+- **Hold any task** to edit it, whatever band it's in. That's the way to rename or
+  reschedule something overdue — and the way to reach **Delete** on a repeater
+  that's gone red.
 - **A repeating task never gets ticked off** — it rolls forward to its next
   occurrence instead. Tick the daily *Water the plants* and it comes back tomorrow
   at 6:30pm.

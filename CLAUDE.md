@@ -13,7 +13,9 @@ full **"Pesky Reminders v2"** Claude Design UI on top of it: a task list banded 
 when things are due (Overdue / Today / Tomorrow / This week / Next week / Later)
 plus a collapsible Done section, and one bottom sheet that both adds
 and edits — a name, a time picked either on scroll wheels or on a calendar, and a
-repeat rule. **Tapping a task opens it for editing**; there is no long-press menu.
+repeat rule. **Tapping an overdue task opens the action panel** (Done + snooze);
+tapping anything else opens it for editing, and **holding any active row** opens the
+editor whatever its band.
 
 Mechanism: `setOngoing(true)` + a `deleteIntent` that re-posts the notification
 whenever it is dismissed. `AlarmManager.setAlarmClock()` schedules the fire.
@@ -85,7 +87,7 @@ adb shell am start -n com.peskyreminders.poc/.MainActivity
 
 Two tiers, and they cover different things.
 
-**Deterministic (JVM, ~9s, no device)** — `app/src/test/`, 171 tests. Robolectric hosts
+**Deterministic (JVM, ~9s, no device)** — `app/src/test/`, 174 tests. Robolectric hosts
 the real composables, and every screen takes `nowMillis` as a parameter instead of
 reading the clock, so each expected label is a fixed string. `TaskTimeTest` covers the
 date maths; `TaskListScreenTest`, `AddTaskSheetTest` and `EditTaskSheetTest` drive
@@ -203,20 +205,20 @@ app/src/main/java/com/peskyreminders/poc/
   ReminderScheduler.kt  # AlarmManager.setAlarmClock wrapper (schedule/cancel per task)
   ReminderReceiver.kt   # BroadcastReceiver: FIRE / REPOST / DONE / NAG
   BootReceiver.kt       # re-arms alarms after a reboot or an app update
-  ReminderActivity.kt   # translucent host for the notification's action sheet
+  ReminderActivity.kt   # standalone translucent host for the action sheet (own task)
   SnoozeOptions.kt      # PURE snooze durations + labels — unit-tested
   ReminderNotifier.kt   # builds the ongoing, re-posting notification
   ui/
     Theme.kt            # PeskyColors tokens + Bricolage Grotesque / DM Sans families
     PeskyIcons.kt       # the design's icon set as stroked ImageVectors
-    Common.kt           # PeskyType text styles, pressable/tap modifiers
+    Common.kt           # PeskyType text styles, pressable (opt-in long-press) / tap
     PeskySheet.kt       # shared bottom-sheet chrome (scrim, entrance, tap-swallow)
     PeskyApp.kt         # root: sheet + done-section state, the "now" ticker
-    TaskListScreen.kt   # header, the DueGroup bands + Done section, FAB
+    TaskListScreen.kt   # header, the DueGroup bands + Done section, FAB, tap/hold routing
     TaskSheet.kt        # add AND edit in one: name, repeat, save, the action rows
     TimePickers.kt      # the wheels and the month grid — shared by both paths
     SettingsSheet.kt    # nag on/off + interval
-    ReminderSheet.kt    # notification only: Done, 15/30/1h/3h chips, 5 min–72 hr wheel
+    ReminderSheet.kt    # Done, 15/30/1h/3h chips, 5 min–72 hr wheel — notification + overdue tap
     ConfirmSheet.kt     # shared "are you sure?" chrome — every delete goes through it
     ClearDoneSheet.kt   # confirms CLEAR (the whole done list)
     DeleteTaskSheet.kt  # confirms deleting one task — the only exit for a repeater
@@ -382,6 +384,33 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   why there is no "back at …" footer — with no held choice there is nothing to
   preview, so each wheel row states the time it lands on instead. Adding a
   highlight back would promise a confirm step that does not exist.
+- **The reminder sheet has two hosts and exactly one implementation.**
+  `ReminderActivity` raises it from the notification; `PeskyApp` raises it when an
+  **overdue** row is tapped. Same composable, no host parameter — two variants
+  would drift at the first fix to either one, which is the same reasoning that
+  collapsed add and edit into one `TaskSheet`.
+- **Tap means different things by band, and that is deliberate.** An overdue row
+  opens the action panel, anything else opens the editor, and *holding* any active
+  row opens the editor whatever its band. Holding is what keeps a repeater's only
+  exit reachable: Delete lives in the edit sheet, and an overdue repeater — a daily
+  9am you have ignored — would otherwise never get there. The rule lives in
+  `TaskRow`, which already receives `overdue` for its styling, so there is no
+  second copy of the condition.
+- **Only overdue rows may raise the panel.** Snooze durations count from the
+  clock, so on a task due *tomorrow* a 30-minute snooze would drag it **earlier** —
+  the trap the snooze bullet above describes. On something already late every
+  duration moves it later, which is what makes the panel safe there and nowhere
+  else. Don't widen it to TODAY without solving that first.
+- **`ReminderActivity` needs `taskAffinity=""`, and it is load-bearing.** The
+  launch carries `FLAG_ACTIVITY_NEW_TASK`; with the default affinity (the package
+  name) Android reuses the app's *existing* task and brings it to the front, so
+  tapping the notification hauled `MainActivity` up behind the translucent sheet
+  and finishing left the user sitting in the app instead of back where they were.
+  Verified with `dumpsys activity activities`: before, `ReminderActivity` joined
+  MainActivity's task (`sz=2`, opaque); after, it is the root of its own (`sz=1`,
+  translucent) and MainActivity's task stays `visible=false`. Exits go through
+  `close()` → `finishAndRemoveTask()`, because plain `finish()` leaves that task
+  behind.
 - **A notification action that shows UI must be an activity PendingIntent.**
   Android 12+ blocks notification trampolines, so Snooze cannot go through
   `ReminderReceiver` — it opens `ReminderActivity` directly. Done stays a broadcast
@@ -416,6 +445,11 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   confirm button was judged a second tap that added nothing (see
   `docs/superpowers/specs/2026-07-27-notification-action-sheet-design.md`) — don't
   "fix" that by reflex.
+- **Hold-to-edit is undiscoverable.** Nothing on screen advertises it, and it is
+  the only way to reach the editor — and therefore Delete — for an overdue task.
+  It is documented in the README's tour and nowhere in the UI. An affordance, or
+  an Edit row in the action panel, would fix it; both were weighed and dropped in
+  `docs/superpowers/specs/2026-07-27-overdue-tap-and-standalone-panel-design.md`.
 - **The section-header tap targets are smaller than 48dp.** Both the Done toggle
   and CLEAR are ~18dp tall, because that is the height the design gives the header
   row. Growing either one alone makes the header jump when it expands, and growing
