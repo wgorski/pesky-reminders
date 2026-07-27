@@ -124,7 +124,7 @@ class SnoozeSheetTest {
 
     @Test fun every_preset_is_offered() {
         show()
-        listOf(5, 15, 30, 60).forEach {
+        listOf(15, 30, 60, 180).forEach {
             compose.onNodeWithTag("preset-$it").assertIsDisplayed()
         }
     }
@@ -139,10 +139,10 @@ class SnoozeSheetTest {
 
     @Test fun each_preset_moves_the_readout() {
         val expected = listOf(
-            5 to "Back at Today, 2:25 PM",
             15 to "Back at Today, 2:35 PM",
             30 to "Back at Today, 2:50 PM",
             60 to "Back at Today, 3:20 PM",
+            180 to "Back at Today, 5:20 PM",
         )
         show()
         expected.forEach { (minutes, label) ->
@@ -192,7 +192,7 @@ class SnoozeSheetTest {
 
     @Test fun a_wheel_choice_is_what_gets_committed() {
         show()
-        tapPreset(5)
+        tapPreset(15)
         tapWheel(105)
         act(compose.onNodeWithTag("snooze-button"))
         assertEquals(105, snoozed)

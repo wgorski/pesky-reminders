@@ -8,16 +8,20 @@ import org.junit.Test
 /** The durations the snooze picker offers, and how they read. */
 class SnoozeOptionsTest {
 
-    @Test fun the_wheel_starts_at_a_quarter_hour_and_reaches_three_days() {
-        assertEquals(15, SnoozeOptions.WHEEL.first())
+    @Test fun the_wheel_starts_at_five_minutes_and_reaches_three_days() {
+        assertEquals(5, SnoozeOptions.WHEEL.first())
         assertEquals(72 * 60, SnoozeOptions.WHEEL.last())
         assertEquals(72 * 60, SnoozeOptions.MAX_MINUTES)
     }
 
-    @Test fun every_entry_stays_aligned_to_a_quarter_hour() {
+    /**
+     * Five minutes is the single exception, and it is the first rung: it is the
+     * shortest snooze worth offering and it is not a multiple of the step.
+     */
+    @Test fun every_entry_above_the_first_rung_stays_aligned_to_a_quarter_hour() {
         assertTrue(
             "an unaligned entry would label as e.g. '1 hr 7'",
-            SnoozeOptions.WHEEL.all { it % SnoozeOptions.STEP_MINUTES == 0 },
+            SnoozeOptions.WHEEL.drop(1).all { it % SnoozeOptions.STEP_MINUTES == 0 },
         )
     }
 
@@ -54,14 +58,18 @@ class SnoozeOptionsTest {
         }
     }
 
-    @Test fun five_minutes_is_a_preset_only() {
-        // It is not a multiple of the step, so the wheel cannot reach it.
-        assertTrue(SnoozeOptions.PRESETS.contains(5))
-        assertFalse(SnoozeOptions.WHEEL.contains(5))
+    @Test fun the_presets_are_the_four_common_snoozes() {
+        assertEquals(listOf(15, 30, 60, 180), SnoozeOptions.PRESETS)
     }
 
-    @Test fun every_preset_except_five_also_appears_on_the_wheel() {
-        SnoozeOptions.PRESETS.filter { it != 5 }.forEach {
+    /** It lost its chip when the presets became 15/30/1hr/3hr. */
+    @Test fun five_minutes_is_reachable_on_the_wheel_but_is_no_longer_a_chip() {
+        assertTrue(SnoozeOptions.WHEEL.contains(5))
+        assertFalse(SnoozeOptions.PRESETS.contains(5))
+    }
+
+    @Test fun every_preset_also_appears_on_the_wheel() {
+        SnoozeOptions.PRESETS.forEach {
             assertTrue("$it should be reachable on the wheel", SnoozeOptions.WHEEL.contains(it))
         }
     }
@@ -119,12 +127,17 @@ class SnoozeOptionsTest {
     }
 
     @Test fun chips_split_the_number_from_its_unit() {
-        assertEquals("5" to "min", SnoozeOptions.chipLabel(5) to SnoozeOptions.chipUnit(5))
+        assertEquals("15" to "min", SnoozeOptions.chipLabel(15) to SnoozeOptions.chipUnit(15))
         assertEquals("30" to "min", SnoozeOptions.chipLabel(30) to SnoozeOptions.chipUnit(30))
         assertEquals("1" to "hr", SnoozeOptions.chipLabel(60) to SnoozeOptions.chipUnit(60))
+        assertEquals("3" to "hr", SnoozeOptions.chipLabel(180) to SnoozeOptions.chipUnit(180))
     }
 
-    @Test fun the_default_matches_the_snooze_the_app_shipped_with() {
+    /**
+     * The sheet no longer pre-selects anything, but this is still the default
+     * argument on `Reminders.snooze` and `snoozeTriggerAtMillis`.
+     */
+    @Test fun the_snooze_api_still_defaults_to_five_minutes() {
         assertEquals(5, SnoozeOptions.DEFAULT_MINUTES)
         assertEquals(
             1_000_000L + 5 * 60_000L,
