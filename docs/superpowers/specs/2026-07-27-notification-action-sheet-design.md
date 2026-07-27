@@ -33,9 +33,17 @@ reminder model changes.
 `ReminderSheet`. It is no longer only about snoozing, and a file called
 `SnoozeSheet.kt` containing a Done button would read as a mistake.
 
-`SnoozeActivity` **keeps its class name**. It is registered in the manifest and
-live `PendingIntent`s point at it; renaming it risks a dead notification action
-across an app update and buys nothing.
+`SnoozeActivity` is renamed to `ReminderActivity` to match, keeping the existing
+`<Thing>Activity` / `<Thing>Sheet` pairing.
+
+An earlier draft kept the old activity name out of a worry about live
+`PendingIntent`s pointing at a class that no longer exists after an app update.
+That worry was wrong: `BootReceiver` listens for `MY_PACKAGE_REPLACED` and
+`Reminders.restoreAll` re-posts the notification for any past-due task — and a
+showing notification means the task is past due — so it is rebuilt against the
+new component immediately. A stale one could not survive the update anyway. The
+translucent theme is already named generically (`Theme.Pesky.Transparent`), so
+the manifest change is the `android:name` and a comment.
 
 Top to bottom:
 
