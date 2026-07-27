@@ -31,15 +31,16 @@ private val R8 = RoundedCornerShape(8.dp)
 
 /**
  * A short scrolling column of values with one selected — the "…or dial it in"
- * control. Shared by the add sheet's day/hour/minute columns and the snooze
+ * control. Shared by the add sheet's day/hour/minute columns and the reminder
  * sheet, so the scroll-into-view behaviour is written once.
  *
  * [title] doubles as the test-tag prefix: the list is `wheel-$title` and each
  * row is `$title-$index`.
  *
- * [aside] is an optional dimmer note set beside the label — the snooze wheel uses
- * it to spell out the clock time a long duration lands on. Return null to leave a
- * row with just its label.
+ * [aside] is an optional dimmer note set beside the label — the reminder sheet's
+ * wheel uses it to spell out the clock time every row lands on. Return null to
+ * leave a row with just its label; the only caller that passes [aside] always
+ * returns a string, so that path is unused today.
  */
 @Composable
 fun PeskyWheel(

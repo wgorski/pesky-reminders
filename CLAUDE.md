@@ -5,7 +5,8 @@ Guidance for Claude Code when working in this repo.
 ## What this is
 
 An Android app (Kotlin + Jetpack Compose) for reminders you **cannot swipe away** —
-only the notification's own **Snooze** (+5 min) and **Done** actions can clear it.
+only the notification's own **Snooze** and **Done** actions, or the action sheet a tap
+on it opens, can clear it.
 
 It started as a one-screen POC proving that notification model, and now carries the
 full **"Pesky Reminders v2"** Claude Design UI on top of it: a task list banded by
@@ -84,7 +85,7 @@ adb shell am start -n com.peskyreminders.poc/.MainActivity
 
 Two tiers, and they cover different things.
 
-**Deterministic (JVM, ~9s, no device)** — `app/src/test/`, 174 tests. Robolectric hosts
+**Deterministic (JVM, ~9s, no device)** — `app/src/test/`, 171 tests. Robolectric hosts
 the real composables, and every screen takes `nowMillis` as a parameter instead of
 reading the clock, so each expected label is a fixed string. `TaskTimeTest` covers the
 date maths; `TaskListScreenTest`, `AddTaskSheetTest` and `EditTaskSheetTest` drive
@@ -97,7 +98,7 @@ every control in the UI. Tests pin `TimeZone` to UTC so they pass on any machine
 - They also gate `git push` via `.githooks/pre-push`. Enable once per clone:
   `git config core.hooksPath .githooks`. Bypass with `git push --no-verify`.
 
-**Device (emulator)** — `app/src/androidTest/`, 56 tests. `ReminderModelTest` is the
+**Device (emulator)** — `app/src/androidTest/`, 57 tests. `ReminderModelTest` is the
 real proof of the notification model: it fires the notification's own delete-intent,
 which is exactly what the OS sends on a swipe. Note it calls `TaskStore.clear()`, so
 running it **wipes the task list on the device**.
@@ -202,7 +203,7 @@ app/src/main/java/com/peskyreminders/poc/
   ReminderScheduler.kt  # AlarmManager.setAlarmClock wrapper (schedule/cancel per task)
   ReminderReceiver.kt   # BroadcastReceiver: FIRE / REPOST / DONE / NAG
   BootReceiver.kt       # re-arms alarms after a reboot or an app update
-  SnoozeActivity.kt     # translucent host for the snooze picker
+  ReminderActivity.kt   # translucent host for the notification's action sheet
   SnoozeOptions.kt      # PURE snooze durations + labels — unit-tested
   ReminderNotifier.kt   # builds the ongoing, re-posting notification
   ui/
@@ -215,7 +216,7 @@ app/src/main/java/com/peskyreminders/poc/
     TaskSheet.kt        # add AND edit in one: name, repeat, save, the action rows
     TimePickers.kt      # the wheels and the month grid — shared by both paths
     SettingsSheet.kt    # nag on/off + interval
-    SnoozeSheet.kt      # "Snooze until" — notification only: presets + 15 min–72 hr wheel
+    ReminderSheet.kt    # notification only: Done, 15/30/1h/3h chips, 5 min–72 hr wheel
     ConfirmSheet.kt     # shared "are you sure?" chrome — every delete goes through it
     ClearDoneSheet.kt   # confirms CLEAR (the whole done list)
     DeleteTaskSheet.kt  # confirms deleting one task — the only exit for a repeater
@@ -232,7 +233,7 @@ app/src/test/               # deterministic JVM suite (Robolectric-hosted Compos
   ui/AddTaskSheetTest.kt    #   every control in the add sheet
   ui/EditTaskSheetTest.kt   #   seeding, one-field edits, the action rows
   ui/SettingsSheetTest.kt   #   the nag switch and interval field
-  ui/SnoozeSheetTest.kt     #   presets, wheel, readout, commit
+  ui/ReminderSheetTest.kt   #   Done, chips, wheel, one-tap commit
   ui/ClearDoneSheetTest.kt  #   the clear-done confirmation
   ui/DeleteTaskSheetTest.kt #   the delete-one-task confirmation
   SettingsTest.kt           #   interval clamping
@@ -369,15 +370,21 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   `Reminders.toggle` and `Reminders.update` cancel instead when the new due time has
   already passed. Note `Reminders.create` does *not*: a new task with a past time is
   taken as "pester me now".
-- **Snooze counts from the clock, never from the task's due time.** `SnoozeSheet`
+- **Snooze counts from the clock, never from the task's due time.** `ReminderSheet`
   deliberately has no "start from" parameter: the preview and `Reminders.snooze` must
   read the same clock, or the readout promises a time the button does not deliver.
-  That bug has already happened once. It is now reachable only from the
-  notification's Snooze action — the task list picks absolute times instead, which is
-  why the sheet no longer takes its title and labels as parameters.
+  That bug has already happened once. It is reachable only from the notification —
+  its Snooze action, or a tap on its body — because the task list picks absolute
+  times instead.
+- **The reminder sheet has no confirm step.** Every chip and every wheel row
+  commits on the tap, which is why nothing in it holds a selection: the chips
+  have no chosen state and the wheel is passed `selectedIndex = -1`. It is also
+  why there is no "back at …" footer — with no held choice there is nothing to
+  preview, so each wheel row states the time it lands on instead. Adding a
+  highlight back would promise a confirm step that does not exist.
 - **A notification action that shows UI must be an activity PendingIntent.**
   Android 12+ blocks notification trampolines, so Snooze cannot go through
-  `ReminderReceiver` — it opens `SnoozeActivity` directly. Done stays a broadcast
+  `ReminderReceiver` — it opens `ReminderActivity` directly. Done stays a broadcast
   because it shows nothing. There is an instrumented test asserting exactly this.
 - **Task ids start at 1.** They double as notification ids and as the base for
   PendingIntent request codes (`taskId * 8 + slot`), so `0` is reserved for the
