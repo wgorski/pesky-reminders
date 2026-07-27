@@ -163,6 +163,7 @@ class ReminderSheetTest {
             snoozed = null
             tapPreset(minutes)
             assertEquals("tapping the $minutes chip must snooze by $minutes", minutes, snoozed)
+            assertFalse("snoozing must not also finish the task", done)
         }
     }
 

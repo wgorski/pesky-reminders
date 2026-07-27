@@ -1,10 +1,14 @@
 package com.peskyreminders.poc
 
+import android.content.Intent
 import android.os.Bundle
 import android.text.format.DateFormat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import com.peskyreminders.poc.ui.ReminderSheet
 
 /**
@@ -17,21 +21,35 @@ import com.peskyreminders.poc.ui.ReminderSheet
  *
  * Backing out — the close button, the scrim, or the back gesture — leaves the
  * reminder exactly as it was. Everything else in the sheet commits on the tap.
+ *
+ * `launchMode="singleTop"` plus [ReminderNotifier]'s `FLAG_ACTIVITY_CLEAR_TOP`
+ * mean a second tap while the sheet is still open **reuses this instance**
+ * instead of creating a new one — that's what keeps two overdue reminders from
+ * stacking translucent activities. But it also means `getIntent()` still
+ * returns the *first* task once that happens, so the task id is held in
+ * Compose state and refreshed from [onNewIntent], not read once in
+ * [onCreate]. Without this, tapping notification A then notification B (without
+ * dismissing the sheet in between) would leave the sheet showing A while Done
+ * or Snooze acted on it — the wrong task, silently.
  */
 class ReminderActivity : ComponentActivity() {
+
+    private val taskId = mutableIntStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-
-        val taskId = intent.getIntExtra(ReminderContract.EXTRA_TASK_ID, 0)
-        val task = TaskStore.find(this, taskId)
-        if (task == null) {
-            finish()
-            return
-        }
+        taskId.intValue = intent.getIntExtra(ReminderContract.EXTRA_TASK_ID, 0)
 
         setContent {
+            val id = taskId.intValue
+            val task = remember(id) { TaskStore.find(this, id) }
+            if (task == null) {
+                // Nothing to show for this id — e.g. it was deleted out from
+                // under us. Close rather than render a blank sheet.
+                LaunchedEffect(id) { finish() }
+                return@setContent
+            }
             ReminderSheet(
                 taskName = task.name,
                 nowMillis = System.currentTimeMillis(),
@@ -43,14 +61,20 @@ class ReminderActivity : ComponentActivity() {
                     // once the slot has passed, and every snooze cancels it.
                     // There is no PeskyApp to raise a toast on either — this
                     // activity is closing.
-                    Reminders.toggle(this, taskId)
+                    Reminders.toggle(this, id)
                     finish()
                 },
                 onSnooze = { minutes ->
-                    Reminders.snooze(this, taskId, minutes)
+                    Reminders.snooze(this, id, minutes)
                     finish()
                 },
             )
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        taskId.intValue = intent.getIntExtra(ReminderContract.EXTRA_TASK_ID, 0)
     }
 }

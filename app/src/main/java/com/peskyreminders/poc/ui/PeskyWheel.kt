@@ -38,9 +38,10 @@ private val R8 = RoundedCornerShape(8.dp)
  * row is `$title-$index`.
  *
  * [aside] is an optional dimmer note set beside the label — the reminder sheet's
- * wheel uses it to spell out the clock time every row lands on. Return null to
- * leave a row with just its label; the only caller that passes [aside] always
- * returns a string, so that path is unused today.
+ * wheel uses it to spell out the clock time every row lands on. Returning null
+ * leaves a row with just its label; the one caller that passes [aside] always
+ * returns a string today, but the null case is kept for any future caller with
+ * gaps to leave.
  */
 @Composable
 fun PeskyWheel(

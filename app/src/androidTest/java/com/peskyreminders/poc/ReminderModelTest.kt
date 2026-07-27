@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
@@ -219,6 +220,24 @@ class ReminderModelTest {
 
         val snooze = n.notification.actions.first { it.title == "Snooze" }
         assertEquals("the body and Snooze open the same sheet", snooze.actionIntent, open)
+
+        // Equality above only proves the body and Snooze share ONE PendingIntent —
+        // it says nothing about which activity that PendingIntent targets. Re-point
+        // both at the wrong component and this test would still be green without
+        // this check. FLAG_NO_CREATE makes getActivity() a pure lookup: a non-null
+        // result means a PendingIntent matching this exact request code and an
+        // Intent targeting ReminderActivity already exists.
+        val expectedTarget = Intent(context, ReminderActivity::class.java)
+        val resolved = PendingIntent.getActivity(
+            context,
+            ReminderContract.requestCode(taskId, ReminderContract.SLOT_SNOOZE),
+            expectedTarget,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+        )
+        assertNotNull(
+            "the body/Snooze PendingIntent must target ReminderActivity",
+            resolved,
+        )
 
         assertEquals(
             "tapping must not clear a reminder you cannot dismiss",

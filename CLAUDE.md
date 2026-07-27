@@ -225,7 +225,7 @@ app/src/main/res/
   font/                     # Bricolage Grotesque + DM Sans TTFs (from Google Fonts)
   drawable/                 # the bell mark: launcher foreground, monochrome, notification
   mipmap-anydpi-v26/        # adaptive icon (no PNG densities needed — minSdk is 26)
-  values/                   # themes.xml (translucent snooze host), colors.xml (icon bg)
+  values/                   # themes.xml (translucent reminder-sheet host), colors.xml (icon bg)
 app/src/test/               # deterministic JVM suite (Robolectric-hosted Compose)
   ReminderContractTest.kt   #   scheduling arithmetic
   TaskTimeTest.kt           #   date maths and labels
@@ -355,7 +355,7 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   margin that any font scale over 1.2 ate, and the few dp of scroll that resulted read
   as broken rather than as a scroller: the first field label slides under the header
   and a strip of dead space opens above the footer. The margin now comes from the 95%
-  cap plus `PeskyWheel`'s 148dp height (one number, shared with the snooze sheet).
+  cap plus `PeskyWheel`'s 148dp height (one number, shared with the reminder sheet).
   **Anything new in that body has to pay for itself** — check it at 440dpi with font
   scale 1.3, which is the case that broke.
 - **The notification is always present tense.** "Is due Today, 09:00", late or not; it
@@ -410,7 +410,12 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   own month, so nothing is misreported; the wheel just cannot point at it.
 - **No undo.** Neither `delete` nor `clearDone` keeps a tombstone, which is why both
   go through `ConfirmSheet`. Any further destructive action should confirm the same
-  way, or add real undo and drop the sheets.
+  way, or add real undo and drop the sheets — with one deliberate exception: the
+  reminder sheet's snooze chips and wheel rows commit the instant they're tapped,
+  no confirm step at all. The choice *is* the whole interaction there, and a
+  confirm button was judged a second tap that added nothing (see
+  `docs/superpowers/specs/2026-07-27-notification-action-sheet-design.md`) — don't
+  "fix" that by reflex.
 - **The section-header tap targets are smaller than 48dp.** Both the Done toggle
   and CLEAR are ~18dp tall, because that is the height the design gives the header
   row. Growing either one alone makes the header jump when it expands, and growing
