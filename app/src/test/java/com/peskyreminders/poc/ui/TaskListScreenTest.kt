@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.peskyreminders.poc.Repeat
 import com.peskyreminders.poc.Task
@@ -47,6 +48,7 @@ class TaskListScreenTest {
 
     private val toggled = mutableListOf<Int>()
     private val opened = mutableListOf<Int>()
+    private val reminded = mutableListOf<Int>()
     private var addTapped = false
     private var sectionToggled = 0
     private var clearTapped = 0
@@ -62,6 +64,7 @@ class TaskListScreenTest {
                 onToggleTask = { toggled += it },
                 onAdd = { addTapped = true },
                 onOpenTask = { opened += it },
+                onRemindTask = { reminded += it },
                 onClearDone = { clearTapped++ },
             )
         }
@@ -126,6 +129,7 @@ class TaskListScreenTest {
                 onToggleTask = { toggled += it },
                 onAdd = { addTapped = true },
                 onOpenTask = { opened += it },
+                onRemindTask = { reminded += it },
                 onClearDone = { clearTapped++ },
             )
         }
@@ -262,17 +266,48 @@ class TaskListScreenTest {
 
     // ---- opening a task -----------------------------------------------------
 
-    @Test fun tapping_a_row_opens_it() {
+    /**
+     * Once something is late the intent is almost always "done" or "not now",
+     * so the tap goes to the action panel rather than to the editor.
+     */
+    @Test fun tapping_an_overdue_row_raises_the_action_panel() {
         show(listOf(overdueTask, upNextTask))
         compose.onNodeWithTag("row-1").performClick()
+        assertEquals(listOf(1), reminded)
+        assertTrue("an overdue tap must not open the editor", opened.isEmpty())
+    }
+
+    @Test fun tapping_a_row_that_is_not_late_opens_it_for_editing() {
+        show(listOf(overdueTask, upNextTask))
         compose.onNodeWithTag("row-2").performClick()
+        assertEquals(listOf(2), opened)
+        assertTrue("only overdue rows raise the panel", reminded.isEmpty())
+    }
+
+    /**
+     * One rule to remember, and the thing that keeps a repeater's only exit
+     * reachable: Delete lives in the edit sheet, and an overdue repeater would
+     * otherwise never reach it.
+     */
+    @Test fun holding_any_active_row_opens_the_editor() {
+        show(listOf(overdueTask, upNextTask))
+        compose.onNodeWithTag("row-1").performSemanticsAction(SemanticsActions.OnLongClick)
+        compose.onNodeWithTag("row-2").performSemanticsAction(SemanticsActions.OnLongClick)
         assertEquals(listOf(1, 2), opened)
+        assertTrue("holding must never raise the panel", reminded.isEmpty())
     }
 
     @Test fun a_done_row_opens_too() {
         show(listOf(doneTask), doneExpanded = true)
         compose.onNodeWithTag("row-3").performClick()
         assertEquals(listOf(3), opened)
+    }
+
+    /** Nothing in the done section is late, so nothing there has a hold gesture. */
+    @Test fun a_done_row_carries_no_long_press_action() {
+        show(listOf(doneTask), doneExpanded = true)
+        val config = compose.onNodeWithTag("row-3").fetchSemanticsNode().config
+        assertFalse(config.contains(SemanticsActions.OnLongClick))
     }
 
     /**
@@ -287,11 +322,16 @@ class TaskListScreenTest {
         assertTrue("the circle must not reach the row beneath it", opened.isEmpty())
     }
 
-    /** The long-press menu is gone — nothing should still be hiding behind one. */
-    @Test fun a_row_carries_no_long_press_action() {
+    /**
+     * The circle is nested inside a row whose tap now raises the action panel,
+     * so a tap on it has to tick the task off and stop there — otherwise every
+     * completion would raise the panel over the top of it.
+     */
+    @Test fun ticking_an_overdue_task_does_not_also_raise_the_panel() {
         show(listOf(overdueTask))
-        val config = compose.onNodeWithTag("row-1").fetchSemanticsNode().config
-        assertFalse(config.contains(SemanticsActions.OnLongClick))
+        compose.onNodeWithTag("check-1").performClick()
+        assertEquals(listOf(1), toggled)
+        assertTrue("the circle must not reach the row beneath it", reminded.isEmpty())
     }
 
     // ---- ordering -----------------------------------------------------------

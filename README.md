@@ -4,9 +4,9 @@ A reminder app for things you keep not doing.
 
 Every other app puts a notification on your lock screen, you flick it away without
 reading it, and the thing stays undone. Pesky won't let you. Its notification cannot
-be swiped away, cannot be cleared, and comes straight back if you try. The only ways
-out are the two buttons on the notification itself: **Snooze** it, or mark it
-**Done**.
+be swiped away, cannot be cleared, and comes straight back if you try. The only way
+out is to open it — a tap on the body or on **Snooze** both raise the same sheet —
+and from there either **snooze** it or mark it **Done**.
 
 <img src="docs/screenshots/task-list.png" width="300" alt="The Pesky task list, banded by when things are due">
 
@@ -17,24 +17,27 @@ out are the two buttons on the notification itself: **Snooze** it, or mark it
 It arrives like any other notification — and then it stays.
 
 - **Swipe it away** and it reappears immediately, in the same place, with the same
-  two buttons.
+  two actions.
 - **Clear all** skips it. So does clearing from the lock screen.
 - If you leave it sitting there it **buzzes again every 5 minutes** until you deal
   with it. (You can change the interval, or switch the nagging off — see Settings.)
-- **Done** clears it for good. **Snooze** opens the picker below.
+- **Tap the body, or Snooze** — both open the same sheet, with every way out in one
+  place. The sheet floats over whatever you were doing rather than opening the app,
+  and once you've chosen it gets out of the way and puts you back there.
 
 The wording stays in the present tense — *"Is due Today, 08:00"* — however late it
 is. It's on your screen because the thing still wants doing.
 
-<img src="docs/screenshots/snooze.png" width="300" alt="The Snooze until sheet">
+<img src="docs/screenshots/reminder-sheet.png" width="300" alt="The reminder's action sheet, with a Done pill, four snooze chips and the duration wheel">
 
-Four presets for the common cases — 5, 15, 30 minutes, an hour — and a wheel for
-everything else, from a quarter of an hour out to three days. The wheel gets coarser
-as it goes (quarter-hours, then half-hours, then hours, then six-hour jumps), and
-once you're past three hours each entry tells you the clock time it lands on, so
-"7h" reads as the 4pm it actually means. The line above the button always spells out
-where you'll end up: *Back at Today, 9:23 AM*. Snoozing counts from **now**, not from
-when the reminder was originally due.
+**Done** is the filled pill at the top — one tap and it's finished. Below it, four
+chips cover the common snoozes: 15 min, 30 min, 1 hr, 3 hr. Everything else is in the
+wheel underneath, starting at 5 minutes out and running to three days, coarsening as
+it goes (quarter-hours, then half-hours, then hours, then six-hour jumps) — and
+*every* row spells out the clock time it lands on, not just the long ones, so "3h"
+reads as the 7:15 it actually means. There's no confirm button anywhere in the sheet:
+whichever chip or wheel row you tap is the choice, committed the instant you tap it.
+Snoozing counts from **now**, not from when the reminder was originally due.
 
 ## The list
 
@@ -48,6 +51,13 @@ is never padded with empty headings.
   have to squint for.
 - **Tap the circle** to tick a task off. It slides down into *Done*, struck through.
   Tap it again to bring it back.
+- **Tap an overdue task** and you get the same sheet the notification opens — Done,
+  the four chips, the wheel. Once something is late the question is almost always
+  "finished, or not now?", so that's what the tap asks. Tapping anything that isn't
+  late opens it for editing, as before.
+- **Hold any task** to edit it, whatever band it's in. That's the way to rename or
+  reschedule something overdue — and the way to reach **Delete** on a repeater
+  that's gone red.
 - **A repeating task never gets ticked off** — it rolls forward to its next
   occurrence instead. Tick the daily *Water the plants* and it comes back tomorrow
   at 6:30pm.

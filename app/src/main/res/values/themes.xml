@@ -2,7 +2,7 @@
 <resources>
 
     <!--
-      The snooze picker draws over whatever is on screen, so the window itself
+      The reminder sheet draws over whatever is on screen, so the window itself
       must be see-through. The sheet paints its own scrim, hence
       backgroundDimEnabled=false — otherwise the dimming stacks and the
       background goes almost black.

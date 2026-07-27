@@ -15,7 +15,9 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.peskyreminders.poc.SnoozeOptions
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -25,7 +27,7 @@ import java.util.Calendar
 import java.util.TimeZone
 
 /**
- * Drives the snooze picker on the JVM against a frozen clock.
+ * Drives the notification's action sheet on the JVM against a frozen clock.
  *
  * Same caveat as the other sheet tests: Compose's pointer injection does not
  * reach into a sheet body under Robolectric, so controls are asserted displayed
@@ -33,7 +35,7 @@ import java.util.TimeZone
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp-xhdpi")
-class SnoozeSheetTest {
+class ReminderSheetTest {
 
     @get:Rule val compose = createComposeRule()
 
@@ -49,15 +51,17 @@ class SnoozeSheetTest {
         }.timeInMillis
 
     private var snoozed: Int? = null
+    private var done = false
     private var dismissed = false
 
     private fun show() {
         compose.setContent {
-            SnoozeSheet(
+            ReminderSheet(
                 taskName = "Water the monstera",
                 nowMillis = now,
                 use24h = false,
                 onDismiss = { dismissed = true },
+                onDone = { done = true },
                 onSnooze = { snoozed = it },
             )
         }
@@ -77,8 +81,6 @@ class SnoozeSheetTest {
         act(compose.onNodeWithTag("SNOOZE-$index"))
     }
 
-    private fun backAt() = compose.onNodeWithTag("back-at")
-
     /** Brings a wheel entry into view without selecting it. */
     private fun scrollToWheel(minutes: Int) {
         val index = SnoozeOptions.WHEEL.indexOf(minutes)
@@ -86,9 +88,59 @@ class SnoozeSheetTest {
         compose.waitForIdle()
     }
 
-    // ---- the clock time beside long durations -------------------------------
+    // ---- rendering ----------------------------------------------------------
 
-    /** The clock is frozen at 14:20, so four hours out is 6:20 PM. */
+    @Test fun the_title_is_the_task_being_acted_on() {
+        show()
+        compose.onNodeWithTag("sheet-title").assertTextEquals("Water the monstera")
+    }
+
+    @Test fun finishing_it_is_offered_first() {
+        show()
+        compose.onNodeWithTag("done-button").assertIsDisplayed()
+        compose.onNodeWithText("Done").assertIsDisplayed()
+    }
+
+    @Test fun every_preset_is_offered() {
+        show()
+        listOf(15, 30, 60, 180).forEach {
+            compose.onNodeWithTag("preset-$it").assertIsDisplayed()
+        }
+    }
+
+    @Test fun both_ways_in_are_labelled() {
+        show()
+        compose.onNodeWithText("Snooze for").assertIsDisplayed()
+        compose.onNodeWithText("…or dial it in").assertIsDisplayed()
+    }
+
+    /** Every control commits on the tap, so there is nothing left to confirm. */
+    @Test fun there_is_no_confirm_step() {
+        show()
+        compose.onNodeWithTag("snooze-button").assertDoesNotExist()
+        compose.onNodeWithTag("back-at").assertDoesNotExist()
+    }
+
+    // ---- the clock time beside every duration -------------------------------
+
+    /**
+     * The footer readout is gone, so the wheel is the only place a landing time
+     * appears. Short durations used to be left to speak for themselves.
+     */
+    @Test fun even_the_shortest_rung_shows_where_it_lands() {
+        show()
+        scrollToWheel(5)
+        compose.onNodeWithText("5 min").assertExists()
+        compose.onNodeWithText("(2:25 PM)").assertExists()
+    }
+
+    @Test fun a_quarter_hour_shows_where_it_lands() {
+        show()
+        scrollToWheel(15)
+        compose.onNodeWithText("15 min").assertExists()
+        compose.onNodeWithText("(2:35 PM)").assertExists()
+    }
+
     @Test fun a_long_duration_shows_where_it_lands() {
         show()
         scrollToWheel(240)
@@ -103,115 +155,56 @@ class SnoozeSheetTest {
         compose.onNodeWithText("(Tomorrow 8:20 PM)").assertExists()
     }
 
-    @Test fun three_hours_is_left_to_speak_for_itself() {
-        show()
-        scrollToWheel(180)
-        compose.onNodeWithText("3h").assertExists()
-        compose.onNodeWithText("(5:20 PM)").assertDoesNotExist()
-    }
-
-    // ---- rendering ----------------------------------------------------------
-
-    @Test fun it_names_the_task_being_snoozed() {
-        show()
-        compose.onNodeWithTag("snooze-task").assertTextEquals("Water the monstera")
-    }
-
-    @Test fun it_opens_on_five_minutes() {
-        show()
-        backAt().assertTextEquals("Back at Today, 2:25 PM")
-    }
-
-    @Test fun every_preset_is_offered() {
-        show()
-        listOf(5, 15, 30, 60).forEach {
-            compose.onNodeWithTag("preset-$it").assertIsDisplayed()
-        }
-    }
-
-    @Test fun both_ways_in_are_labelled() {
-        show()
-        compose.onNodeWithText("Common").assertIsDisplayed()
-        compose.onNodeWithText("…or dial it in").assertIsDisplayed()
-    }
-
-    // ---- choosing -----------------------------------------------------------
-
-    @Test fun each_preset_moves_the_readout() {
-        val expected = listOf(
-            5 to "Back at Today, 2:25 PM",
-            15 to "Back at Today, 2:35 PM",
-            30 to "Back at Today, 2:50 PM",
-            60 to "Back at Today, 3:20 PM",
-        )
-        show()
-        expected.forEach { (minutes, label) ->
-            tapPreset(minutes)
-            backAt().assertTextEquals(label)
-        }
-    }
-
-    @Test fun the_wheel_reaches_durations_the_presets_do_not() {
-        show()
-        tapWheel(45)
-        backAt().assertTextEquals("Back at Today, 3:05 PM")
-
-        tapWheel(90)
-        backAt().assertTextEquals("Back at Today, 3:50 PM")
-    }
-
-    @Test fun the_wheel_goes_all_the_way_to_the_cap() {
-        show()
-        tapWheel(180)
-        backAt().assertTextEquals("Back at Today, 5:20 PM")
-    }
-
-    @Test fun a_preset_and_the_wheel_stay_in_step() {
-        show()
-        tapPreset(60)
-        backAt().assertTextEquals("Back at Today, 3:20 PM")
-        // 60 is on the wheel too, so picking it there should not change anything.
-        tapWheel(60)
-        backAt().assertTextEquals("Back at Today, 3:20 PM")
-    }
-
     // ---- committing ---------------------------------------------------------
 
-    @Test fun snoozing_reports_the_chosen_duration() {
+    @Test fun each_preset_commits_the_moment_it_is_tapped() {
         show()
-        tapPreset(30)
-        act(compose.onNodeWithTag("snooze-button"))
-        assertEquals(30, snoozed)
+        listOf(15, 30, 60, 180).forEach { minutes ->
+            snoozed = null
+            tapPreset(minutes)
+            assertEquals("tapping the $minutes chip must snooze by $minutes", minutes, snoozed)
+            assertFalse("snoozing must not also finish the task", done)
+        }
     }
 
-    @Test fun snoozing_without_choosing_uses_the_default() {
+    @Test fun a_wheel_row_commits_the_moment_it_is_tapped() {
         show()
-        act(compose.onNodeWithTag("snooze-button"))
-        assertEquals(SnoozeOptions.DEFAULT_MINUTES, snoozed)
-    }
+        tapWheel(45)
+        assertEquals(45, snoozed)
 
-    @Test fun a_wheel_choice_is_what_gets_committed() {
-        show()
-        tapPreset(5)
+        snoozed = null
         tapWheel(105)
-        act(compose.onNodeWithTag("snooze-button"))
         assertEquals(105, snoozed)
+    }
+
+    @Test fun the_wheels_first_rung_is_the_five_minute_snooze() {
+        show()
+        tapWheel(5)
+        assertEquals(5, snoozed)
+    }
+
+    @Test fun done_finishes_the_task_and_snoozes_nothing() {
+        show()
+        act(compose.onNodeWithTag("done-button"))
+        assertTrue(done)
+        assertNull("finishing must not also push it out", snoozed)
     }
 
     // ---- backing out --------------------------------------------------------
 
-    @Test fun closing_snoozes_nothing() {
+    @Test fun closing_changes_nothing() {
         show()
-        tapPreset(60)
         act(compose.onNodeWithContentDescription("Close"))
-        assertEquals(true, dismissed)
+        assertTrue(dismissed)
         assertNull("backing out must leave the reminder alone", snoozed)
+        assertFalse("backing out must leave the reminder alone", done)
     }
 
-    @Test fun tapping_the_scrim_snoozes_nothing() {
+    @Test fun tapping_the_scrim_changes_nothing() {
         show()
         act(compose.onNodeWithTag("sheet-scrim"))
-        assertEquals(true, dismissed)
+        assertTrue(dismissed)
         assertNull("backing out must leave the reminder alone", snoozed)
+        assertFalse("backing out must leave the reminder alone", done)
     }
 }

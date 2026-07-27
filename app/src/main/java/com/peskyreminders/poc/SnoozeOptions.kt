@@ -1,15 +1,16 @@
 package com.peskyreminders.poc
 
 /**
- * The durations offered when snoozing or rescheduling.
+ * The durations offered when snoozing.
  *
- * Presets cover the common cases; the wheel covers everything else, out to three
- * days. Note 5 minutes is deliberately *not* on the wheel — it isn't a multiple
- * of the finest step — so it survives only as a preset.
+ * Four chips cover the common cases; the wheel covers everything else, out to
+ * three days. The sheet commits on the tap, so neither of them holds a
+ * selection — see [com.peskyreminders.poc.ui.ReminderSheet].
  */
 object SnoozeOptions {
 
-    val PRESETS = listOf(5, 15, 30, 60)
+    /** The chips, in the order they are laid out: 15 min, 30 min, 1 hr, 3 hr. */
+    val PRESETS = listOf(15, 30, 60, 180)
 
     /** The finest step on the wheel, and the granularity every entry is aligned to. */
     const val STEP_MINUTES = 15
@@ -20,6 +21,9 @@ object SnoozeOptions {
     private const val DAY = 24 * HOUR
 
     private data class Band(val step: Int, val upTo: Int)
+
+    /** The one wheel entry that is not a multiple of [STEP_MINUTES]. See [WHEEL]. */
+    private const val SHORTEST_MINUTES = 5
 
     /**
      * The wheel coarsens as it goes.
@@ -37,8 +41,15 @@ object SnoozeOptions {
         Band(step = 6 * HOUR, upTo = 3 * DAY),        // six-hour jumps, to 72 hr
     )
 
-    /** 15, 30 … 2 hr, 2 hr 30 … 6 hr, 7 hr … 1 day, 1 day 6 hr … 3 days. */
+    /**
+     * 5, then 15, 30 … 2 hr, 2 hr 30 … 6 hr, 7 hr … 1 day, 1 day 6 hr … 3 days.
+     *
+     * Five minutes is the first rung and the sole break in the [STEP_MINUTES]
+     * alignment. It used to be a preset chip; the chips are now 15/30/1hr/3hr, so
+     * this is the only place left to reach the shortest useful snooze.
+     */
     val WHEEL: List<Int> = buildList {
+        add(SHORTEST_MINUTES)
         var previous = 0
         for ((step, upTo) in BANDS) {
             for (minutes in (previous + step)..upTo step step) add(minutes)
@@ -46,16 +57,12 @@ object SnoozeOptions {
         }
     }
 
-    const val DEFAULT_MINUTES = 5
-
     /**
-     * Past this, a duration stops being something you can picture, so the wheel
-     * shows the clock time it lands on next to it — see [landsAtAClockTime].
+     * The default argument on `Reminders.snooze` and
+     * `ReminderContract.snoozeTriggerAtMillis`. The sheet pre-selects nothing, so
+     * nothing in the UI reads this — it is the API's own fallback.
      */
-    const val CLOCK_TIME_ABOVE_MINUTES = 3 * HOUR
-
-    /** Whether [minutes] is long enough to be worth spelling out as a time. */
-    fun landsAtAClockTime(minutes: Int): Boolean = minutes > CLOCK_TIME_ABOVE_MINUTES
+    const val DEFAULT_MINUTES = 5
 
     /** "45 min", "1h", "1h 15", "3h", "24h", "72h". */
     fun label(minutes: Int): String {

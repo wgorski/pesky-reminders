@@ -4,7 +4,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 
-/** Central hub: fires, re-posts, snoozes, and completes a task's reminder. */
+/** Central hub: fires, re-posts, and completes a task's reminder. Snoozing goes
+ *  through [ReminderActivity] instead — it shows UI, which a receiver cannot do
+ *  on Android 12+. */
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val taskId = intent.getIntExtra(ReminderContract.EXTRA_TASK_ID, 0)

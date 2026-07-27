@@ -5,14 +5,17 @@ Guidance for Claude Code when working in this repo.
 ## What this is
 
 An Android app (Kotlin + Jetpack Compose) for reminders you **cannot swipe away** —
-only the notification's own **Snooze** (+5 min) and **Done** actions can clear it.
+only the notification's own **Snooze** and **Done** actions, or the action sheet a tap
+on it opens, can clear it.
 
 It started as a one-screen POC proving that notification model, and now carries the
 full **"Pesky Reminders v2"** Claude Design UI on top of it: a task list banded by
 when things are due (Overdue / Today / Tomorrow / This week / Next week / Later)
 plus a collapsible Done section, and one bottom sheet that both adds
 and edits — a name, a time picked either on scroll wheels or on a calendar, and a
-repeat rule. **Tapping a task opens it for editing**; there is no long-press menu.
+repeat rule. **Tapping an overdue task opens the action panel** (Done + snooze);
+tapping anything else opens it for editing, and **holding any active row** opens the
+editor whatever its band.
 
 Mechanism: `setOngoing(true)` + a `deleteIntent` that re-posts the notification
 whenever it is dismissed. `AlarmManager.setAlarmClock()` schedules the fire.
@@ -97,7 +100,7 @@ every control in the UI. Tests pin `TimeZone` to UTC so they pass on any machine
 - They also gate `git push` via `.githooks/pre-push`. Enable once per clone:
   `git config core.hooksPath .githooks`. Bypass with `git push --no-verify`.
 
-**Device (emulator)** — `app/src/androidTest/`, 56 tests. `ReminderModelTest` is the
+**Device (emulator)** — `app/src/androidTest/`, 57 tests. `ReminderModelTest` is the
 real proof of the notification model: it fires the notification's own delete-intent,
 which is exactly what the OS sends on a swipe. Note it calls `TaskStore.clear()`, so
 running it **wipes the task list on the device**.
@@ -202,20 +205,20 @@ app/src/main/java/com/peskyreminders/poc/
   ReminderScheduler.kt  # AlarmManager.setAlarmClock wrapper (schedule/cancel per task)
   ReminderReceiver.kt   # BroadcastReceiver: FIRE / REPOST / DONE / NAG
   BootReceiver.kt       # re-arms alarms after a reboot or an app update
-  SnoozeActivity.kt     # translucent host for the snooze picker
+  ReminderActivity.kt   # standalone translucent host for the action sheet (own task)
   SnoozeOptions.kt      # PURE snooze durations + labels — unit-tested
   ReminderNotifier.kt   # builds the ongoing, re-posting notification
   ui/
     Theme.kt            # PeskyColors tokens + Bricolage Grotesque / DM Sans families
     PeskyIcons.kt       # the design's icon set as stroked ImageVectors
-    Common.kt           # PeskyType text styles, pressable/tap modifiers
+    Common.kt           # PeskyType text styles, pressable (opt-in long-press) / tap
     PeskySheet.kt       # shared bottom-sheet chrome (scrim, entrance, tap-swallow)
     PeskyApp.kt         # root: sheet + done-section state, the "now" ticker
-    TaskListScreen.kt   # header, the DueGroup bands + Done section, FAB
+    TaskListScreen.kt   # header, the DueGroup bands + Done section, FAB, tap/hold routing
     TaskSheet.kt        # add AND edit in one: name, repeat, save, the action rows
     TimePickers.kt      # the wheels and the month grid — shared by both paths
     SettingsSheet.kt    # nag on/off + interval
-    SnoozeSheet.kt      # "Snooze until" — notification only: presets + 15 min–72 hr wheel
+    ReminderSheet.kt    # Done, 15/30/1h/3h chips, 5 min–72 hr wheel — notification + overdue tap
     ConfirmSheet.kt     # shared "are you sure?" chrome — every delete goes through it
     ClearDoneSheet.kt   # confirms CLEAR (the whole done list)
     DeleteTaskSheet.kt  # confirms deleting one task — the only exit for a repeater
@@ -224,7 +227,7 @@ app/src/main/res/
   font/                     # Bricolage Grotesque + DM Sans TTFs (from Google Fonts)
   drawable/                 # the bell mark: launcher foreground, monochrome, notification
   mipmap-anydpi-v26/        # adaptive icon (no PNG densities needed — minSdk is 26)
-  values/                   # themes.xml (translucent snooze host), colors.xml (icon bg)
+  values/                   # themes.xml (translucent reminder-sheet host), colors.xml (icon bg)
 app/src/test/               # deterministic JVM suite (Robolectric-hosted Compose)
   ReminderContractTest.kt   #   scheduling arithmetic
   TaskTimeTest.kt           #   date maths and labels
@@ -232,7 +235,7 @@ app/src/test/               # deterministic JVM suite (Robolectric-hosted Compos
   ui/AddTaskSheetTest.kt    #   every control in the add sheet
   ui/EditTaskSheetTest.kt   #   seeding, one-field edits, the action rows
   ui/SettingsSheetTest.kt   #   the nag switch and interval field
-  ui/SnoozeSheetTest.kt     #   presets, wheel, readout, commit
+  ui/ReminderSheetTest.kt   #   Done, chips, wheel, one-tap commit
   ui/ClearDoneSheetTest.kt  #   the clear-done confirmation
   ui/DeleteTaskSheetTest.kt #   the delete-one-task confirmation
   SettingsTest.kt           #   interval clamping
@@ -354,7 +357,7 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   margin that any font scale over 1.2 ate, and the few dp of scroll that resulted read
   as broken rather than as a scroller: the first field label slides under the header
   and a strip of dead space opens above the footer. The margin now comes from the 95%
-  cap plus `PeskyWheel`'s 148dp height (one number, shared with the snooze sheet).
+  cap plus `PeskyWheel`'s 148dp height (one number, shared with the reminder sheet).
   **Anything new in that body has to pay for itself** — check it at 440dpi with font
   scale 1.3, which is the case that broke.
 - **The notification is always present tense.** "Is due Today, 09:00", late or not; it
@@ -369,15 +372,48 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   `Reminders.toggle` and `Reminders.update` cancel instead when the new due time has
   already passed. Note `Reminders.create` does *not*: a new task with a past time is
   taken as "pester me now".
-- **Snooze counts from the clock, never from the task's due time.** `SnoozeSheet`
+- **Snooze counts from the clock, never from the task's due time.** `ReminderSheet`
   deliberately has no "start from" parameter: the preview and `Reminders.snooze` must
   read the same clock, or the readout promises a time the button does not deliver.
-  That bug has already happened once. It is now reachable only from the
-  notification's Snooze action — the task list picks absolute times instead, which is
-  why the sheet no longer takes its title and labels as parameters.
+  That bug has already happened once. It is reachable only from the notification —
+  its Snooze action, or a tap on its body — because the task list picks absolute
+  times instead.
+- **The reminder sheet has no confirm step.** Every chip and every wheel row
+  commits on the tap, which is why nothing in it holds a selection: the chips
+  have no chosen state and the wheel is passed `selectedIndex = -1`. It is also
+  why there is no "back at …" footer — with no held choice there is nothing to
+  preview, so each wheel row states the time it lands on instead. Adding a
+  highlight back would promise a confirm step that does not exist.
+- **The reminder sheet has two hosts and exactly one implementation.**
+  `ReminderActivity` raises it from the notification; `PeskyApp` raises it when an
+  **overdue** row is tapped. Same composable, no host parameter — two variants
+  would drift at the first fix to either one, which is the same reasoning that
+  collapsed add and edit into one `TaskSheet`.
+- **Tap means different things by band, and that is deliberate.** An overdue row
+  opens the action panel, anything else opens the editor, and *holding* any active
+  row opens the editor whatever its band. Holding is what keeps a repeater's only
+  exit reachable: Delete lives in the edit sheet, and an overdue repeater — a daily
+  9am you have ignored — would otherwise never get there. The rule lives in
+  `TaskRow`, which already receives `overdue` for its styling, so there is no
+  second copy of the condition.
+- **Only overdue rows may raise the panel.** Snooze durations count from the
+  clock, so on a task due *tomorrow* a 30-minute snooze would drag it **earlier** —
+  the trap the snooze bullet above describes. On something already late every
+  duration moves it later, which is what makes the panel safe there and nowhere
+  else. Don't widen it to TODAY without solving that first.
+- **`ReminderActivity` needs `taskAffinity=""`, and it is load-bearing.** The
+  launch carries `FLAG_ACTIVITY_NEW_TASK`; with the default affinity (the package
+  name) Android reuses the app's *existing* task and brings it to the front, so
+  tapping the notification hauled `MainActivity` up behind the translucent sheet
+  and finishing left the user sitting in the app instead of back where they were.
+  Verified with `dumpsys activity activities`: before, `ReminderActivity` joined
+  MainActivity's task (`sz=2`, opaque); after, it is the root of its own (`sz=1`,
+  translucent) and MainActivity's task stays `visible=false`. Exits go through
+  `close()` → `finishAndRemoveTask()`, because plain `finish()` leaves that task
+  behind.
 - **A notification action that shows UI must be an activity PendingIntent.**
   Android 12+ blocks notification trampolines, so Snooze cannot go through
-  `ReminderReceiver` — it opens `SnoozeActivity` directly. Done stays a broadcast
+  `ReminderReceiver` — it opens `ReminderActivity` directly. Done stays a broadcast
   because it shows nothing. There is an instrumented test asserting exactly this.
 - **Task ids start at 1.** They double as notification ids and as the base for
   PendingIntent request codes (`taskId * 8 + slot`), so `0` is reserved for the
@@ -403,7 +439,17 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   own month, so nothing is misreported; the wheel just cannot point at it.
 - **No undo.** Neither `delete` nor `clearDone` keeps a tombstone, which is why both
   go through `ConfirmSheet`. Any further destructive action should confirm the same
-  way, or add real undo and drop the sheets.
+  way, or add real undo and drop the sheets — with one deliberate exception: the
+  reminder sheet's snooze chips and wheel rows commit the instant they're tapped,
+  no confirm step at all. The choice *is* the whole interaction there, and a
+  confirm button was judged a second tap that added nothing (see
+  `docs/superpowers/specs/2026-07-27-notification-action-sheet-design.md`) — don't
+  "fix" that by reflex.
+- **Hold-to-edit is undiscoverable.** Nothing on screen advertises it, and it is
+  the only way to reach the editor — and therefore Delete — for an overdue task.
+  It is documented in the README's tour and nowhere in the UI. An affordance, or
+  an Edit row in the action panel, would fix it; both were weighed and dropped in
+  `docs/superpowers/specs/2026-07-27-overdue-tap-and-standalone-panel-design.md`.
 - **The section-header tap targets are smaller than 48dp.** Both the Done toggle
   and CLEAR are ~18dp tall, because that is the height the design gives the header
   row. Growing either one alone makes the header jump when it expands, and growing

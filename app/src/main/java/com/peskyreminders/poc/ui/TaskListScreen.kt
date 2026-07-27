@@ -34,6 +34,8 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -89,6 +91,10 @@ fun TaskListScreen(
     onAdd: () -> Unit,
     onOpenSettings: () -> Unit = {},
     onOpenTask: (Int) -> Unit = {},
+    // A tap on an overdue row goes here instead of to [onOpenTask]: once
+    // something is late the intent is almost always "done" or "not now", not
+    // "rename it". Holding the row still reaches the editor.
+    onRemindTask: (Int) -> Unit = {},
     onClearDone: () -> Unit = {},
 ) {
     val active = tasks.filterNot { it.done }.sortedBy { it.dueMillis }
@@ -130,7 +136,7 @@ fun TaskListScreen(
                     items(rows, key = { "t-${it.id}" }) { task ->
                         TaskRow(
                             task, nowMillis, use24h, band == DueGroup.OVERDUE,
-                            onToggleTask, onOpenTask,
+                            onToggleTask, onOpenTask, onRemindTask,
                             Modifier.cardLayer().animateItem(FADE_IN, MOVE, FADE_OUT),
                         )
                     }
@@ -233,16 +239,31 @@ private fun TaskRow(
     overdue: Boolean,
     onToggle: (Int) -> Unit,
     onOpen: (Int) -> Unit,
+    onRemind: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val due = TaskTime.formatFull(task.dueMillis, nowMillis, use24h)
+    val haptics = LocalHapticFeedback.current
     Row(
-        // The whole row opens the task. The check circle is a nested target, so a
-        // tap that lands on it ticks the task off and never reaches this.
+        // The whole row is one target. The check circle is nested inside it, so a
+        // tap that lands on the circle ticks the task off and never reaches this.
+        //
+        // Tap means different things by band, deliberately: an overdue row opens
+        // the action panel, anything else opens the editor. Holding always opens
+        // the editor, which is what keeps a repeater's only exit — Delete, in the
+        // edit sheet — reachable while it is late.
         modifier = modifier
             .fillMaxWidth()
             .testTag("row-${task.id}")
-            .pressable(scale = 0.99f) { onOpen(task.id) }
+            .pressable(
+                scale = 0.99f,
+                onLongClick = {
+                    // Without this the gesture feels dead until the sheet
+                    // animates in — there is no ripple to acknowledge it.
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onOpen(task.id)
+                },
+            ) { if (overdue) onRemind(task.id) else onOpen(task.id) }
             .clip(CardShape)
             .background(PeskyColors.Card)
             .border(

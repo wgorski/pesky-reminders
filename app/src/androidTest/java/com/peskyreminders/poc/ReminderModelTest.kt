@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
@@ -199,6 +200,50 @@ class ReminderModelTest {
 
         val done = n.notification.actions.first { it.title == "Done" }
         assertTrue("Done stays a broadcast — it shows no UI", done.actionIntent.isBroadcast)
+    }
+
+    /**
+     * The body used to do nothing at all — there was no contentIntent — so the
+     * only way to act on a reminder was the two small action buttons.
+     *
+     * It must not auto-cancel: tapping is not one of the two sanctioned ways to
+     * clear a notification you are not allowed to dismiss.
+     */
+    @Test fun tapping_the_notification_body_opens_the_same_sheet_as_snooze() {
+        deliver(ReminderContract.ACTION_FIRE)
+        val n = active()
+        assertNotNull("precondition: posted", n)
+
+        val open = n!!.notification.contentIntent
+        assertNotNull("the body must be tappable", open)
+        assertTrue("must be an activity; a trampoline is blocked on 12+", open.isActivity)
+
+        val snooze = n.notification.actions.first { it.title == "Snooze" }
+        assertEquals("the body and Snooze open the same sheet", snooze.actionIntent, open)
+
+        // Equality above only proves the body and Snooze share ONE PendingIntent —
+        // it says nothing about which activity that PendingIntent targets. Re-point
+        // both at the wrong component and this test would still be green without
+        // this check. FLAG_NO_CREATE makes getActivity() a pure lookup: a non-null
+        // result means a PendingIntent matching this exact request code and an
+        // Intent targeting ReminderActivity already exists.
+        val expectedTarget = Intent(context, ReminderActivity::class.java)
+        val resolved = PendingIntent.getActivity(
+            context,
+            ReminderContract.requestCode(taskId, ReminderContract.SLOT_SNOOZE),
+            expectedTarget,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+        )
+        assertNotNull(
+            "the body/Snooze PendingIntent must target ReminderActivity",
+            resolved,
+        )
+
+        assertEquals(
+            "tapping must not clear a reminder you cannot dismiss",
+            0,
+            n.notification.flags and Notification.FLAG_AUTO_CANCEL,
+        )
     }
 
     @Test fun a_chosen_duration_is_what_the_reminder_comes_back_at() {

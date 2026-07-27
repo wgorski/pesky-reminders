@@ -91,6 +91,7 @@ object ReminderNotifier {
         val now = System.currentTimeMillis()
         val due = TaskTime.formatFull(task.dueMillis, now, !DateFormat.is24HourFormat(context))
 
+        val open = openSheetIntent(context, task.id)
         val notification = NotificationCompat.Builder(context, ReminderContract.CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(task.name)
@@ -106,10 +107,14 @@ object ReminderNotifier {
             // The nag drives its own vibration, so silence Android's re-alert
             // on update — otherwise a refresh buzzes twice.
             .setOnlyAlertOnce(true)
+            // A tap on the body opens the same sheet the Snooze action does.
+            // autoCancel stays off: tapping is not one of the two sanctioned
+            // ways to clear a notification you are not allowed to dismiss.
+            .setContentIntent(open)
             .setDeleteIntent(
                 broadcast(context, ReminderContract.ACTION_REPOST, task.id, ReminderContract.SLOT_REPOST)
             )
-            .addAction(0, "Snooze", snoozePickerIntent(context, task.id))
+            .addAction(0, "Snooze", open)
             .addAction(
                 0, "Done",
                 broadcast(context, ReminderContract.ACTION_DONE, task.id, ReminderContract.SLOT_DONE)
@@ -130,11 +135,17 @@ object ReminderNotifier {
     }
 
     /**
-     * Opens the duration picker. An activity, not a broadcast: Android 12+
-     * blocks a notification action from bouncing through a receiver to show UI.
+     * Opens the reminder's action sheet — Done, the snooze chips and the wheel.
+     *
+     * Serves both the body tap and the Snooze action: same intent, same request
+     * code, so it is literally the same PendingIntent and needs no slot of its
+     * own in [ReminderContract].
+     *
+     * An activity, not a broadcast: Android 12+ blocks a notification action
+     * from bouncing through a receiver to show UI.
      */
-    private fun snoozePickerIntent(context: Context, taskId: Int): PendingIntent {
-        val intent = Intent(context, SnoozeActivity::class.java).apply {
+    private fun openSheetIntent(context: Context, taskId: Int): PendingIntent {
+        val intent = Intent(context, ReminderActivity::class.java).apply {
             putExtra(ReminderContract.EXTRA_TASK_ID, taskId)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }

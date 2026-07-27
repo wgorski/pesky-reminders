@@ -158,7 +158,7 @@ private fun SheetHeader(title: String, onDismiss: () -> Unit) {
             style = PeskyType.SheetTitle,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
+            modifier = Modifier.weight(1f, fill = false).testTag("sheet-title"),
         )
         Box(
             modifier = Modifier
