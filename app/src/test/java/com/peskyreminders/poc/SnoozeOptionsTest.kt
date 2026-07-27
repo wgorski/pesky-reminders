@@ -100,32 +100,6 @@ class SnoozeOptionsTest {
         assertEquals("72h", SnoozeOptions.label(72 * 60))
     }
 
-    // ---- when the clock time is spelled out ---------------------------------
-
-    @Test fun three_hours_and_under_stand_on_their_own() {
-        listOf(15, 60, 120, 180).forEach {
-            assertFalse(
-                "${SnoozeOptions.label(it)} needs no clock time",
-                SnoozeOptions.landsAtAClockTime(it),
-            )
-        }
-    }
-
-    @Test fun anything_over_three_hours_gets_a_clock_time() {
-        listOf(240, 6 * 60, 24 * 60, 72 * 60).forEach {
-            assertTrue(
-                "${SnoozeOptions.label(it)} should show where it lands",
-                SnoozeOptions.landsAtAClockTime(it),
-            )
-        }
-    }
-
-    @Test fun the_boundary_is_three_hours_exactly() {
-        assertEquals(180, SnoozeOptions.CLOCK_TIME_ABOVE_MINUTES)
-        assertFalse(SnoozeOptions.landsAtAClockTime(180))
-        assertTrue(SnoozeOptions.landsAtAClockTime(181))
-    }
-
     @Test fun chips_split_the_number_from_its_unit() {
         assertEquals("15" to "min", SnoozeOptions.chipLabel(15) to SnoozeOptions.chipUnit(15))
         assertEquals("30" to "min", SnoozeOptions.chipLabel(30) to SnoozeOptions.chipUnit(30))

@@ -5,7 +5,7 @@ import android.text.format.DateFormat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.peskyreminders.poc.ui.SnoozeSheet
+import com.peskyreminders.poc.ui.ReminderSheet
 
 /**
  * The "Snooze until" picker, opened straight from the notification action.
@@ -14,8 +14,8 @@ import com.peskyreminders.poc.ui.SnoozeSheet
  * off to a background receiver that then shows UI, so there is no way to raise
  * this from [ReminderReceiver]. Drawn translucent over whatever is on screen.
  *
- * Backing out leaves the reminder exactly as it was — only the Snooze button
- * commits.
+ * Backing out — the close button, the scrim, or the back gesture — leaves the
+ * reminder exactly as it was. Everything else in the sheet commits on the tap.
  */
 class SnoozeActivity : ComponentActivity() {
 
@@ -31,11 +31,20 @@ class SnoozeActivity : ComponentActivity() {
         }
 
         setContent {
-            SnoozeSheet(
+            ReminderSheet(
                 taskName = task.name,
                 nowMillis = System.currentTimeMillis(),
                 use24h = DateFormat.is24HourFormat(this),
                 onDismiss = { finish() },
+                onDone = {
+                    // toggle can refuse a repeater whose slot has not come, but
+                    // that cannot happen from here: a notification only exists
+                    // once the slot has passed, and every snooze cancels it.
+                    // There is no PeskyApp to raise a toast on either — this
+                    // activity is closing.
+                    Reminders.toggle(this, taskId)
+                    finish()
+                },
                 onSnooze = { minutes ->
                     Reminders.snooze(this, taskId, minutes)
                     finish()

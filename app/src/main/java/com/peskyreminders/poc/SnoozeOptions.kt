@@ -64,15 +64,6 @@ object SnoozeOptions {
      */
     const val DEFAULT_MINUTES = 5
 
-    /**
-     * Past this, a duration stops being something you can picture, so the wheel
-     * shows the clock time it lands on next to it — see [landsAtAClockTime].
-     */
-    const val CLOCK_TIME_ABOVE_MINUTES = 3 * HOUR
-
-    /** Whether [minutes] is long enough to be worth spelling out as a time. */
-    fun landsAtAClockTime(minutes: Int): Boolean = minutes > CLOCK_TIME_ABOVE_MINUTES
-
     /** "45 min", "1h", "1h 15", "3h", "24h", "72h". */
     fun label(minutes: Int): String {
         if (minutes < HOUR) return "$minutes min"
