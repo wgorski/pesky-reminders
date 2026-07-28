@@ -13,3 +13,6 @@ build/
 
 # APK staging / local serving dir
 /dist/
+
+# Kotlin compiler daemon error logs
+.kotlin/

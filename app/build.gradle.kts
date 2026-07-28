@@ -5,17 +5,17 @@ plugins {
 }
 
 android {
-    namespace = "com.peskyreminders.poc"
+    namespace = "com.wgorski.peskyreminders"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.peskyreminders.poc"
+        applicationId = "com.wgorski.peskyreminders"
         minSdk = 26
         targetSdk = 35
-        versionCode = 19
+        versionCode = 20
         // Single source of truth for the release version. Semver; bump once per
         // branch/session (minor for features, patch for fixes) — see CLAUDE.md.
-        versionName = "0.13.0"
+        versionName = "0.14.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -21,7 +21,7 @@ Mechanism: `setOngoing(true)` + a `deleteIntent` that re-posts the notification
 whenever it is dismissed. `AlarmManager.setAlarmClock()` schedules the fire.
 No foreground service, no full-screen intent.
 
-Design/plan/verification live in `docs/`. Package: `com.peskyreminders.poc`.
+Design/plan/verification live in `docs/`. Package: `com.wgorski.peskyreminders`.
 
 ## Environment (IMPORTANT)
 
@@ -72,7 +72,7 @@ To publish, use the `release` skill (`.claude/skills/release/`).
 
 # Install + launch on the emulator
 adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb shell am start -n com.peskyreminders.poc/.MainActivity
+adb shell am start -n com.wgorski.peskyreminders/.MainActivity
 
 # The deterministic suite — JVM only, no device, ~6s. Run this constantly.
 ./gradlew :app:testDebugUnitTest
@@ -80,7 +80,7 @@ adb shell am start -n com.peskyreminders.poc/.MainActivity
 # Instrumented tests (emulator must be running).
 # NOTE: connected-test tasks do NOT support --tests; use the property form:
 ./gradlew :app:connectedDebugAndroidTest \
-  -Pandroid.testInstrumentationRunnerArguments.class=com.peskyreminders.poc.ReminderModelTest
+  -Pandroid.testInstrumentationRunnerArguments.class=com.wgorski.peskyreminders.ReminderModelTest
 ```
 
 ## Testing
@@ -122,7 +122,7 @@ Gradle, or resource files:
    emulator; it is ~100× faster and never flakes.
 2. `./gradlew :app:assembleDebug` — must succeed.
 3. `adb install -r app/build/outputs/apk/debug/app-debug.apk`.
-4. `adb shell am force-stop com.peskyreminders.poc && adb shell am start -n com.peskyreminders.poc/.MainActivity`.
+4. `adb shell am force-stop com.wgorski.peskyreminders && adb shell am start -n com.wgorski.peskyreminders/.MainActivity`.
 5. `adb exec-out screencap -p > /tmp/<name>.png` and actually look at it.
 6. For anything touching the notification model, run
    `./gradlew :app:connectedDebugAndroidTest` — `ReminderModelTest` is the real proof.
@@ -194,7 +194,7 @@ Notes:
 ## Project layout
 
 ```
-app/src/main/java/com/peskyreminders/poc/
+app/src/main/java/com/wgorski/peskyreminders/
   MainActivity.kt       # edge-to-edge host; hydrates the store, asks for POST_NOTIFICATIONS
   Task.kt               # Task + Repeat model, incl. the snooze anchor (slotMillis)
   TaskTime.kt           # PURE date maths, labels & DueGroup banding — unit-tested
