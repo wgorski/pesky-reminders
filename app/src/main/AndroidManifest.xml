@@ -2,7 +2,34 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      The exact-alarm permissions are a pair, and both halves are needed.
+
+      USE_EXACT_ALARM (API 33+) is a normal permission: granted at install, not
+      revocable, so canScheduleExactAlarms() is always true and ReminderScheduler
+      needs no guard. That is the right shape for this app — a reminder the user
+      can silently switch off in Settings is indistinguishable from a broken one.
+
+      But it does not exist below API 33, and minSdk here is 26. Because the app
+      targets >= 31, Android 12 and 12L (API 31-32) require one of the "Alarms &
+      reminders" permissions or setAlarmClock throws SecurityException — so on
+      exactly those two versions the app would install and then fail to schedule
+      anything. SCHEDULE_EXACT_ALARM capped at 32 covers that window; Android 12
+      pre-grants it, so there is still no runtime code to write.
+
+      The cap matters: left uncapped it would list the app under Settings →
+      Alarms & reminders on Android 13+ with a toggle that cannot change
+      anything, since USE_EXACT_ALARM already decides the answer there.
+
+      ManifestPermissionsTest pins both halves. Nothing else would catch their
+      loss — the emulator is API 35 and every device from 13 up stays green.
+    -->
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
 

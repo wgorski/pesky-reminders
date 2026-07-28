@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<!--
+  The privacy policy as a single self-contained page, so it can be dropped on any
+  host (GitHub Pages, Cloudflare Pages, an S3 bucket) without a build step.
+  Kept in sync with privacy-policy.md by hand — the markdown is the source of
+  truth for wording.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — Pesky Reminders</title>
+<style>
+  :root {
+    --screen: #161513;
+    --card: #211F1C;
+    --border: #2D2B27;
+    --text: #F3F0EB;
+    --dim: #9E9890;
+    --accent: #D12744;
+    --accent-bright: #E8455F;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 0 24px 96px;
+    background: var(--screen);
+    color: var(--text);
+    font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 46rem; margin: 0 auto; }
+  header { padding: 64px 0 8px; }
+  .mark {
+    display: flex; align-items: center; gap: 14px;
+    font-size: 30px; font-weight: 800; letter-spacing: -0.02em;
+  }
+  .mark .dot { color: var(--accent); }
+  h1 { font-size: 30px; line-height: 1.2; margin: 36px 0 6px; letter-spacing: -0.01em; }
+  .updated { color: var(--dim); font-size: 15px; margin: 0 0 40px; }
+  h2 {
+    font-size: 21px; margin: 44px 0 12px; letter-spacing: -0.01em;
+    padding-top: 20px; border-top: 1px solid var(--border);
+  }
+  p, li { color: #E4E0DA; }
+  a { color: var(--accent-bright); }
+  ul { padding-left: 22px; }
+  li { margin: 7px 0; }
+  strong { color: var(--text); }
+  .lede {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px 22px; margin: 0 0 8px;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 16px; }
+  th, td {
+    text-align: left; padding: 12px 14px;
+    border-bottom: 1px solid var(--border); vertical-align: top;
+  }
+  th { color: var(--dim); font-weight: 600; font-size: 13px;
+       text-transform: uppercase; letter-spacing: 0.08em; }
+  td:first-child { white-space: nowrap; color: var(--text); font-weight: 600; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.88em; background: var(--card);
+    border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px;
+  }
+  footer { margin-top: 56px; color: var(--dim); font-size: 15px; }
+  @media (max-width: 620px) {
+    body { padding: 0 18px 72px; font-size: 16px; }
+    table, thead, tbody, tr, td, th { display: block; }
+    thead { display: none; }
+    tr { border-bottom: 1px solid var(--border); padding: 10px 0; }
+    td { border: 0; padding: 4px 0; }
+    td:first-child { white-space: normal; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="mark">
+    <svg width="42" height="42" viewBox="18 18 72 72" aria-hidden="true">
+      <g transform="translate(37.2,37.2) scale(1.4)" fill="none" stroke="#F3F0EB"
+         stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6,8 a6,6 0 0 1 12,0 c0,7 3,9 3,9 H3 s3,-2 3,-9"/>
+        <path d="M10.3,21 a1.94,1.94 0 0 0 3.4,0"/>
+      </g>
+      <g fill="none" stroke="#D12744" stroke-width="3.2" stroke-linecap="round">
+        <path d="M36,46 a10,10 0 0 0 0,16"/>
+        <path d="M72,46 a10,10 0 0 1 0,16"/>
+      </g>
+    </svg>
+    <span>Pesky<span class="dot">.</span></span>
+  </div>
+</header>
+
+<h1>Privacy Policy</h1>
+<p class="updated">Pesky Reminders &middot; Last updated 28 July 2026</p>
+
+<p class="lede">Pesky Reminders does not collect, transmit, or share any personal
+data. This policy explains that in more detail, and what the app's permissions are
+actually for.</p>
+
+<h2>The short version</h2>
+<p>Everything you type into Pesky Reminders stays on your phone. The app has no
+account system, no analytics, no advertising, and no ability to reach the internet
+— it does not request the <code>INTERNET</code> permission, so the operating system
+would refuse any attempt to make a network connection.</p>
+
+<h2>What the app stores</h2>
+<p>The app stores, in its own private storage on your device:</p>
+<ul>
+  <li>the name you gave each reminder</li>
+  <li>the date and time it is due</li>
+  <li>whether it repeats, and how often</li>
+  <li>whether you have marked it done</li>
+  <li>your preference for whether and how often an unattended reminder buzzes again</li>
+</ul>
+<p>That is the whole list. This data is held in Android's app-private storage, which
+other apps cannot read. It is never sent anywhere, because the app cannot send
+anything anywhere.</p>
+
+<h2>What the app does not do</h2>
+<ul>
+  <li>No personal or sensitive information is collected.</li>
+  <li>No data is transmitted off your device.</li>
+  <li>No data is shared with anyone, including the developer.</li>
+  <li>No advertising, and no advertising identifiers are read.</li>
+  <li>No analytics, crash reporting, or usage measurement.</li>
+  <li>No third-party SDKs that collect data. The app's only dependencies are
+      Google's own AndroidX and Jetpack Compose UI libraries.</li>
+  <li>No account, sign-in, or profile.</li>
+  <li>No location, contacts, camera, microphone, photos, or files are accessed.</li>
+</ul>
+
+<h2>Permissions, and why each is needed</h2>
+<table>
+  <thead><tr><th>Permission</th><th>What it is for</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Notifications</td>
+      <td>A reminder <em>is</em> a notification. Without this the app cannot tell
+          you anything.</td>
+    </tr>
+    <tr>
+      <td>Alarms &amp; reminders</td>
+      <td>To fire a reminder at the exact minute you chose. Android may otherwise
+          delay alarms to save battery, which would make a reminder set for 08:00
+          arrive late.</td>
+    </tr>
+    <tr>
+      <td>Run at startup</td>
+      <td>Android discards scheduled alarms when the device restarts or the app is
+          updated. This lets the app re-arm your existing reminders afterwards, so
+          they are not silently lost.</td>
+    </tr>
+    <tr>
+      <td>Vibrate</td>
+      <td>So a reminder can buzz.</td>
+    </tr>
+  </tbody>
+</table>
+<p>None of these permissions is used to gather information about you.</p>
+
+<h2>Deleting your data</h2>
+<p>Uninstalling the app deletes everything it has stored. There is no server-side
+copy to request the deletion of, because there is no server.</p>
+<p>You can also delete individual reminders inside the app at any time, and clear
+the whole completed list from the list screen.</p>
+
+<h2>Children</h2>
+<p>The app is not directed at children under 13. It collects no data from anyone,
+of any age.</p>
+
+<h2>Changes to this policy</h2>
+<p>If the app ever changes in a way that affects this policy — for example if a
+future version added an optional backup feature — this document will be updated
+before that version is released, and the date at the top will change.</p>
+
+<h2>Contact</h2>
+<p>Questions about this policy, or about the app, can be raised on the issue
+tracker:</p>
+<ul>
+  <li><a href="https://github.com/wgorski/pesky-reminders/issues">github.com/wgorski/pesky-reminders/issues</a></li>
+</ul>
+
+<footer>
+  The app is open source, so every claim on this page can be checked against the
+  code. The absence of the <code>INTERNET</code> permission is visible in
+  <code>app/src/main/AndroidManifest.xml</code>.
+</footer>
+
+</div>
+</body>
+</html>

@@ -14,5 +14,15 @@ build/
 # APK staging / local serving dir
 /dist/
 
+# Play upload signing. The keystore itself lives outside the repo
+# (~/.pesky-keys/) so it cannot be committed even by accident; these patterns
+# are the second line of defence.
+/keystore.properties
+*.jks
+*.keystore
+
+# wrangler's local state, from deploying the privacy policy to Cloudflare Pages
+/.wrangler/
+
 # Kotlin compiler daemon error logs
 .kotlin/
