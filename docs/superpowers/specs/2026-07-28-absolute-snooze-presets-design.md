@@ -59,22 +59,31 @@ them.
 
 ### Section labels
 
-```
-Snooze for       ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐
-                 │ 15  │ │ 30  │ │  1  │ │  3  │
-                 │ min │ │ min │ │ hr  │ │ hr  │
-                 └─────┘ └─────┘ └─────┘ └─────┘
+The two chip rows are **one section under a single "Snooze" label**. The existing
+`"Snooze for"` string becomes `"Snooze"`.
 
-Snooze until    ┌───────┐ ┌────────┐ ┌────────┐ ┌────────┐
+```
+Snooze          ┌─────┐  ┌─────┐  ┌─────┐  ┌─────┐
+                │ 15  │  │ 30  │  │  1  │  │  3  │
+                │ min │  │ min │  │ hr  │  │ hr  │
+                └─────┘  └─────┘  └─────┘  └─────┘
+
+                ┌───────┐ ┌────────┐ ┌────────┐ ┌────────┐
                 │ 20:00 │ │ 08:00  │ │ 13:00  │ │ 20:00  │
                 │ Today │ │Tomorrow│ │Tomorrow│ │Tomorrow│
                 └───────┘ └────────┘ └────────┘ └────────┘
 
-…or dial it in   [ wheel, 148dp ]
+…or dial it in  [ wheel, 148dp ]
 ```
 
-"Snooze for" / "Snooze until" is a parallel pair. Labelling the new row "…or until"
-would have stacked a second "…or" against the wheel's and read as an afterthought.
+One label, because the two rows are the same choice offered two ways — how long from
+now, or what time to land on. Giving each its own heading would split one decision into
+two, and "Snooze for" cannot cover an absolute time anyway: *snooze for 20:00* is wrong,
+which is what forces the label to be the neutral "Snooze" rather than a matched pair.
+
+The rows stay visually distinct without a heading each: the duration chips are narrow and
+uniform, the time chips wider and two-word. `Arrangement.spacedBy(8.dp)` between them
+keeps them a single block against the 10dp gap before the wheel's label.
 
 ## Committing the tap
 
@@ -160,6 +169,10 @@ genuinely only just fits — there is ample headroom.
 
 **JVM (`ReminderSheetTest`)** — the four chips render with the expected
 time-over-day labels, and a tap commits the matching absolute millis in one go.
+
+One existing assertion changes rather than being added to:
+`ReminderSheetTest.kt:113` asserts `onNodeWithText("Snooze for")`, which becomes
+`"Snooze"`. It is the only test coupled to that string.
 
 **Instrumented** — `snoozeUntil` arms an alarm for a future target; for a past target it
 arms nothing and leaves the notification posted.
