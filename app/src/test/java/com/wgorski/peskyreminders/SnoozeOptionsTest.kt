@@ -3,10 +3,22 @@ package com.wgorski.peskyreminders
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
+import java.util.Calendar
+import java.util.TimeZone
 
 /** The durations the snooze picker offers, and how they read. */
 class SnoozeOptionsTest {
+
+    /**
+     * The duration tests are pure minute arithmetic and do not care, but
+     * [SnoozeOptions.untilPresets] walks a calendar, so the zone has to be
+     * pinned or the ladder tests pass only in UTC+0.
+     */
+    @Before fun fixTimeZone() {
+        TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+    }
 
     @Test fun the_wheel_starts_at_five_minutes_and_reaches_three_days() {
         assertEquals(5, SnoozeOptions.WHEEL.first())
@@ -124,5 +136,93 @@ class SnoozeOptionsTest {
             1_000_000L + 45 * 60_000L,
             ReminderContract.snoozeTriggerAtMillis(1_000_000L, 45),
         )
+    }
+
+    // ---- the absolute-time ladder --------------------------------------------
+
+    private fun at(
+        year: Int, month: Int, day: Int, hour: Int = 0, minute: Int = 0, second: Int = 0,
+    ): Long = Calendar.getInstance().apply {
+        set(year, month, day, hour, minute, second)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+
+    /** July 2026 — the 25th is a Saturday. */
+    private fun jul(day: Int, hour: Int, minute: Int = 0, second: Int = 0) =
+        at(2026, Calendar.JULY, day, hour, minute, second)
+
+    @Test fun early_morning_offers_all_three_of_today_then_tomorrow_morning() {
+        assertEquals(
+            listOf(jul(25, 8), jul(25, 13), jul(25, 20), jul(26, 8)),
+            SnoozeOptions.untilPresets(jul(25, 5)),
+        )
+    }
+
+    @Test fun mid_afternoon_skips_the_rungs_already_past() {
+        assertEquals(
+            listOf(jul(25, 20), jul(26, 8), jul(26, 13), jul(26, 20)),
+            SnoozeOptions.untilPresets(jul(25, 14)),
+        )
+    }
+
+    /** Past the last rung, today drops out entirely and tomorrow leads. */
+    @Test fun after_the_evening_rung_the_row_starts_tomorrow() {
+        assertEquals(
+            listOf(jul(26, 8), jul(26, 13), jul(26, 20), jul(27, 8)),
+            SnoozeOptions.untilPresets(jul(25, 20, 0, 1)),
+        )
+    }
+
+    /**
+     * "Strictly after" — a rung landing exactly on the clock is spent. Snoozing
+     * to the instant that just arrived would leave the reminder due now.
+     */
+    @Test fun a_rung_exactly_on_the_clock_is_excluded() {
+        val presets = SnoozeOptions.untilPresets(jul(25, 13))
+        assertFalse("13:00 today is now, not later", presets.contains(jul(25, 13)))
+        assertEquals(jul(25, 20), presets.first())
+    }
+
+    @Test fun it_always_offers_exactly_four_however_late_it_is() {
+        listOf(jul(25, 0), jul(25, 7, 59), jul(25, 13), jul(25, 23, 59, 59)).forEach { now ->
+            assertEquals(
+                "four chips at $now",
+                SnoozeOptions.UNTIL_COUNT,
+                SnoozeOptions.untilPresets(now).size,
+            )
+        }
+    }
+
+    @Test fun every_target_is_in_the_future_and_ascending() {
+        val now = jul(25, 14, 20)
+        val presets = SnoozeOptions.untilPresets(now)
+        assertTrue("all future", presets.all { it > now })
+        assertEquals("ascending", presets.sorted(), presets)
+    }
+
+    @Test fun every_target_lands_on_a_whole_rung_hour() {
+        SnoozeOptions.untilPresets(jul(25, 14, 20)).forEach { target ->
+            assertTrue(
+                "hour ${TaskTime.hourOf(target)} is not a rung",
+                TaskTime.hourOf(target) in SnoozeOptions.UNTIL_HOURS,
+            )
+            assertEquals("minutes must be zeroed", 0, TaskTime.minuteOf(target))
+        }
+    }
+
+    /**
+     * Wall-clock, not fixed offsets. Europe/Warsaw springs forward at 02:00 on
+     * Sunday 29 March 2026, so the day containing the change is 23 hours long —
+     * a `+ 864e5` ladder would put every rung after it an hour out.
+     */
+    @Test fun the_rungs_hold_their_wall_clock_hour_across_a_dst_change() {
+        TimeZone.setDefault(TimeZone.getTimeZone("Europe/Warsaw"))
+        val saturdayEvening = at(2026, Calendar.MARCH, 28, 21, 0)
+        SnoozeOptions.untilPresets(saturdayEvening).forEach { target ->
+            assertTrue(
+                "hour ${TaskTime.hourOf(target)} drifted",
+                TaskTime.hourOf(target) in SnoozeOptions.UNTIL_HOURS,
+            )
+        }
     }
 }

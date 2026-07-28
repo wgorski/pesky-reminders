@@ -77,4 +77,46 @@ object SnoozeOptions {
         if (minutes < HOUR) minutes.toString() else (minutes / HOUR).toString()
 
     fun chipUnit(minutes: Int): String = if (minutes < HOUR) "min" else "hr"
+
+    // ---- the absolute-time ladder --------------------------------------------
+
+    /**
+     * The times of day the second chip row can land on, in the order they occur.
+     *
+     * Morning, afternoon, evening. The 8 here is *not* the same decision as
+     * [TaskTime]'s own morning hour, which only governs where `defaultDue` lands
+     * once the clock reads 21:00 — they coincide today and are free to diverge,
+     * which is why this does not borrow that constant.
+     */
+    val UNTIL_HOURS = listOf(8, 13, 20)
+
+    /** Chips in the row, matching the four duration chips above it. */
+    const val UNTIL_COUNT = 4
+
+    /**
+     * Four days of candidates. Three would strictly do — the worst case is a tap
+     * just after the evening rung, which spends today entirely and needs
+     * tomorrow's three plus the next day's morning — so the fourth day is margin
+     * that never reaches the screen.
+     */
+    private const val UNTIL_DAYS_AHEAD = 3
+
+    /**
+     * The next [UNTIL_COUNT] rung times strictly after [nowMillis], ascending.
+     *
+     * Today is not special-cased: it contributes all three rungs like any other
+     * day, so at 06:00 the row opens with today's 08:00.
+     *
+     * Built with calendar arithmetic, so a rung keeps its wall-clock hour across
+     * a DST change — the day containing a spring-forward is 23 hours long, and a
+     * fixed-millisecond ladder would drift by an hour from there on.
+     */
+    fun untilPresets(nowMillis: Long): List<Long> =
+        (0..UNTIL_DAYS_AHEAD)
+            .flatMap { dayOffset ->
+                val day = TaskTime.plusDays(nowMillis, dayOffset)
+                UNTIL_HOURS.map { TaskTime.withTimeOfDay(day, it) }
+            }
+            .filter { it > nowMillis }
+            .take(UNTIL_COUNT)
 }
