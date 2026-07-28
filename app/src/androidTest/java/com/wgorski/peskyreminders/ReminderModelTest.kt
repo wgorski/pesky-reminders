@@ -186,6 +186,74 @@ class ReminderModelTest {
         assertTrue("alarm ~5 min out (was $deltaMin min)", deltaMin in 4.0..5.5)
     }
 
+    // ---- snoozing to an absolute time ---------------------------------------
+
+    @Test fun snoozing_until_a_time_arms_that_exact_alarm() {
+        val alarmManager = context.getSystemService(AlarmManager::class.java)
+        TaskStore.clear(context)
+        taskId = TaskStore.add(
+            context, "Buy milk", System.currentTimeMillis() - 1_000L, Repeat.ONCE,
+        ).id
+        deliver(ReminderContract.ACTION_FIRE)
+        assertNotNull("precondition: posted", active())
+
+        val target = System.currentTimeMillis() + 3 * 60 * 60 * 1000L
+        Reminders.snoozeUntil(context, taskId, target)
+        Thread.sleep(300)
+
+        assertNull("a future target clears the notification", active())
+        val next = alarmManager.nextAlarmClock
+        assertNotNull("a future target must arm an alarm", next)
+        val delta = Math.abs(next!!.triggerTime - target)
+        assertTrue("alarm on the target, not an offset (delta=$delta ms)", delta < 2_000L)
+        assertEquals("the stored due time is the target exactly", target, stored().dueMillis)
+    }
+
+    /**
+     * The sheet can sit open across a rung: opened at 12:59, "13:00" tapped at
+     * 13:00:30. Arming setAlarmClock in the past fires it immediately, so this
+     * takes the same line as a task created with a past time — pester me now.
+     */
+    @Test fun snoozing_until_a_time_already_past_keeps_nagging_and_arms_nothing() {
+        val alarmManager = context.getSystemService(AlarmManager::class.java)
+        TaskStore.clear(context)
+        taskId = TaskStore.add(
+            context, "Buy milk", System.currentTimeMillis() - 1_000L, Repeat.ONCE,
+        ).id
+        deliver(ReminderContract.ACTION_FIRE)
+        assertNotNull("precondition: posted", active())
+
+        val past = System.currentTimeMillis() - 60_000L
+        Reminders.snoozeUntil(context, taskId, past)
+        Thread.sleep(300)
+
+        assertNotNull("a past target must leave the reminder on screen", active())
+        val next = alarmManager.nextAlarmClock
+        if (next != null) {
+            assertTrue(
+                "must not arm an alarm in the past (was ${next.triggerTime})",
+                next.triggerTime > System.currentTimeMillis(),
+            )
+        }
+    }
+
+    /** A snooze moves one firing, not the whole cycle. */
+    @Test fun snoozing_a_repeater_until_a_time_keeps_its_slot_as_the_anchor() {
+        TaskStore.clear(context)
+        val slot = System.currentTimeMillis() - 1_000L
+        taskId = TaskStore.add(context, "Water the plants", slot, Repeat.DAILY).id
+        deliver(ReminderContract.ACTION_FIRE)
+
+        val target = System.currentTimeMillis() + 30 * 60 * 1000L
+        Reminders.snoozeUntil(context, taskId, target)
+        Thread.sleep(300)
+
+        val task = stored()
+        assertEquals("fires at the target", target, task.dueMillis)
+        assertEquals("but the recurring slot is preserved", slot, task.anchorMillis)
+        assertEquals("and slotMillis reads the anchor", slot, task.slotMillis)
+    }
+
     /**
      * The Snooze action must open the picker activity itself. Routing it through
      * a receiver that then starts an activity is a notification trampoline, which

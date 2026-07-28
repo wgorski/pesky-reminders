@@ -302,4 +302,48 @@ object Reminders {
         TaskStore.replace(context, next)
         ReminderScheduler.schedule(context, next)
     }
+
+    /**
+     * Push a reminder to an absolute time rather than by a duration.
+     *
+     * The counterpart to [snooze], behind the sheet's time chips. The target
+     * arrives already computed and is stored verbatim, which is the whole point:
+     * converting it to minutes at composition time would drift by however long
+     * the user takes to tap, and [ReminderActivity] snapshots its clock once at
+     * `setContent` and never refreshes it — a sheet left open five minutes would
+     * land "Tomorrow 08:00" at 08:05.
+     *
+     * The anchor is kept exactly as [snooze] keeps it: a snooze moves one firing,
+     * not the cycle, so a daily 09:00 pushed to tomorrow morning still leaves the
+     * day after at 09:00.
+     *
+     * Unlike [snooze], the target is not guaranteed to be in the future — see the
+     * past branch below.
+     */
+    fun snoozeUntil(context: Context, taskId: Int, atMillis: Long) {
+        val task = TaskStore.find(context, taskId) ?: return
+        val now = System.currentTimeMillis()
+        // Read before anything is cancelled — the past branch needs to know
+        // whether there was a notification to put back.
+        val showing = ReminderNotifier.isShowing(context, taskId)
+        ReminderScheduler.cancelNag(context, taskId)
+
+        val next = task.copy(
+            dueMillis = atMillis,
+            anchorMillis = if (task.repeats) task.slotMillis else null,
+        )
+        TaskStore.replace(context, next)
+
+        if (atMillis > now) {
+            ReminderNotifier.cancel(context, taskId)
+            ReminderScheduler.schedule(context, next)
+        } else {
+            // The sheet sat open across the very rung it was offering. Never arm
+            // setAlarmClock in the past — it fires at once. Take the line
+            // `create` takes for a past due time instead: pester me now, so the
+            // reminder stays overdue with its notification live.
+            ReminderScheduler.cancel(context, taskId)
+            if (showing) notify(context, taskId)
+        }
+    }
 }
