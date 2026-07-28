@@ -29,7 +29,7 @@ private val R12 = RoundedCornerShape(12.dp)
 
 /**
  * Everything you can do about a reminder that has gone off, on one screen:
- * finish it, or push it by any duration.
+ * finish it, push it by a duration, or push it to a time of day.
  *
  * Raised by the notification, and nowhere else — both by a tap on its body and
  * by its Snooze action. The task list picks absolute times instead, which is why
@@ -54,6 +54,7 @@ fun ReminderSheet(
     onDismiss: () -> Unit,
     onDone: () -> Unit,
     onSnooze: (minutes: Int) -> Unit,
+    onSnoozeUntil: (atMillis: Long) -> Unit,
 ) {
     PeskySheet(
         title = taskName,
@@ -64,13 +65,28 @@ fun ReminderSheet(
     ) {
         DoneButton(onDone)
 
+        // Both rows are one choice offered two ways — how long from now, or what
+        // time to land on — so they share a heading. "Snooze for" could not cover
+        // the second row anyway: *snooze for 20:00* is wrong, which is what makes
+        // the label the neutral "Snooze" rather than a matched pair.
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Snooze for", style = PeskyType.FieldLabel)
+            Text("Snooze", style = PeskyType.FieldLabel)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SnoozeOptions.PRESETS.forEach { preset ->
                     PresetChip(minutes = preset, modifier = Modifier.weight(1f)) {
                         onSnooze(preset)
                     }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SnoozeOptions.untilPresets(nowMillis).forEachIndexed { index, target ->
+                    UntilChip(
+                        target = target,
+                        nowMillis = nowMillis,
+                        use24h = use24h,
+                        index = index,
+                        modifier = Modifier.weight(1f),
+                    ) { onSnoozeUntil(target) }
                 }
             }
         }
@@ -162,6 +178,55 @@ private fun PresetChip(
             fontFamily = DmSans,
             fontSize = 10.sp,
             color = PeskyColors.TextDim,
+        )
+    }
+}
+
+/**
+ * A chip that lands on a time of day rather than after a duration.
+ *
+ * Same geometry as [PresetChip] and the same hierarchy — the big line is the
+ * value, the small line qualifies it. The part-of-day names the ladder is built
+ * from are deliberately absent: once the chip reads "13:00" the word "afternoon"
+ * adds nothing, and four chips only get ~81dp each, which "Afternoon" at 15sp
+ * very nearly fills on its own.
+ *
+ * Both labels come from [TaskTime], so a chip cannot disagree with the wheel rows
+ * below it about how a time is written — including whether it is 24-hour.
+ */
+@Composable
+private fun UntilChip(
+    target: Long,
+    nowMillis: Long,
+    use24h: Boolean,
+    index: Int,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .testTag("until-$index")
+            .pressable(scale = 0.96f, onClick = onClick)
+            .clip(R12)
+            .background(PeskyColors.Field)
+            .border(1.dp, PeskyColors.FieldBorder, R12)
+            .padding(vertical = 9.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            TaskTime.formatTime(target, use24h),
+            fontFamily = DmSans,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = PeskyColors.Text,
+            maxLines = 1,
+        )
+        Text(
+            TaskTime.formatDay(target, nowMillis),
+            fontFamily = DmSans,
+            fontSize = 10.sp,
+            color = PeskyColors.TextDim,
+            maxLines = 1,
         )
     }
 }

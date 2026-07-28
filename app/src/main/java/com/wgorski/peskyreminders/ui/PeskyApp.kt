@@ -136,6 +136,14 @@ fun PeskyApp() {
                             now = System.currentTimeMillis()
                             remindTaskId = null
                         },
+                        onSnoozeUntil = { atMillis ->
+                            Reminders.snoozeUntil(context, id, atMillis)
+                            // Same re-band as above. A target already past is the
+                            // one case the row stays in OVERDUE, and re-reading
+                            // the clock is what keeps it there correctly.
+                            now = System.currentTimeMillis()
+                            remindTaskId = null
+                        },
                     )
                 } ?: run { remindTaskId = null }
             }

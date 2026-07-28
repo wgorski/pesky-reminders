@@ -51,6 +51,7 @@ class ReminderSheetTest {
         }.timeInMillis
 
     private var snoozed: Int? = null
+    private var snoozedUntil: Long? = null
     private var done = false
     private var dismissed = false
 
@@ -63,6 +64,7 @@ class ReminderSheetTest {
                 onDismiss = { dismissed = true },
                 onDone = { done = true },
                 onSnooze = { snoozed = it },
+                onSnoozeUntil = { snoozedUntil = it },
             )
         }
     }
@@ -108,10 +110,15 @@ class ReminderSheetTest {
         }
     }
 
+    /**
+     * One heading over both chip rows. "Snooze for" could not cover the second
+     * row — *snooze for 20:00* is wrong — so the label is the neutral "Snooze".
+     */
     @Test fun both_ways_in_are_labelled() {
         show()
-        compose.onNodeWithText("Snooze for").assertIsDisplayed()
+        compose.onNodeWithText("Snooze").assertIsDisplayed()
         compose.onNodeWithText("…or dial it in").assertIsDisplayed()
+        compose.onNodeWithText("Snooze for").assertDoesNotExist()
     }
 
     /** Every control commits on the tap, so there is nothing left to confirm. */
@@ -206,5 +213,79 @@ class ReminderSheetTest {
         assertTrue(dismissed)
         assertNull("backing out must leave the reminder alone", snoozed)
         assertFalse("backing out must leave the reminder alone", done)
+    }
+
+    // ---- the absolute-time chips ---------------------------------------------
+
+    private fun tapUntil(index: Int) = act(compose.onNodeWithTag("until-$index"))
+
+    @Test fun four_absolute_times_are_offered() {
+        show()
+        repeat(SnoozeOptions.UNTIL_COUNT) {
+            compose.onNodeWithTag("until-$it").assertIsDisplayed()
+        }
+    }
+
+    /**
+     * Big line is the clock time, small line says which day — the same hierarchy
+     * as the duration chips, where the number leads and the unit qualifies it.
+     * The clock is Saturday 25 July 14:20 with `use24h = false`.
+     */
+    @Test fun each_chip_reads_as_a_time_over_a_day() {
+        show()
+        listOf(
+            "8:00 PM" to "Today",
+            "8:00 AM" to "Tomorrow",
+            "1:00 PM" to "Tomorrow",
+            "8:00 PM" to "Tomorrow",
+        ).forEachIndexed { index, (time, day) ->
+            compose.onNodeWithTag("until-$index").assertTextEquals(time, day)
+        }
+    }
+
+    /** The part-of-day words drive generation only; they are never shown. */
+    @Test fun the_chips_do_not_name_the_part_of_day() {
+        show()
+        listOf("Morning", "Afternoon", "Evening").forEach {
+            compose.onNodeWithText(it).assertDoesNotExist()
+        }
+    }
+
+    @Test fun tapping_a_chip_commits_that_exact_time_in_one_tap() {
+        show()
+        tapUntil(1)
+        assertEquals(
+            "commits the absolute target, not a duration",
+            SnoozeOptions.untilPresets(now)[1],
+            snoozedUntil,
+        )
+        assertNull("and does not go through the duration path", snoozed)
+    }
+
+    /**
+     * One composition, four taps — `setContent` may only be called once per test,
+     * and nothing here dismisses the sheet, so every chip stays tappable.
+     */
+    @Test fun every_chip_commits_its_own_target() {
+        show()
+        val expected = SnoozeOptions.untilPresets(now)
+        repeat(SnoozeOptions.UNTIL_COUNT) { index ->
+            snoozedUntil = null
+            tapUntil(index)
+            assertEquals("chip $index", expected[index], snoozedUntil)
+        }
+        assertEquals(
+            "four distinct targets, no two chips the same",
+            SnoozeOptions.UNTIL_COUNT,
+            expected.distinct().size,
+        )
+    }
+
+    /** Nothing in this sheet holds a selection, these chips included. */
+    @Test fun the_absolute_chips_hold_no_selection() {
+        show()
+        tapUntil(0)
+        compose.onNodeWithTag("until-0").assertIsDisplayed()
+        compose.onNodeWithTag("snooze-button").assertDoesNotExist()
     }
 }

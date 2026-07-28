@@ -68,6 +68,10 @@ class ReminderActivity : ComponentActivity() {
                     Reminders.snooze(this, id, minutes)
                     close()
                 },
+                onSnoozeUntil = { atMillis ->
+                    Reminders.snoozeUntil(this, id, atMillis)
+                    close()
+                },
             )
         }
     }
