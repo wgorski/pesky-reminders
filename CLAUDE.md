@@ -218,7 +218,7 @@ app/src/main/java/com/wgorski/peskyreminders/
     TaskSheet.kt        # add AND edit in one: name, repeat, save, the action rows
     TimePickers.kt      # the wheels and the month grid — shared by both paths
     SettingsSheet.kt    # nag on/off + interval
-    ReminderSheet.kt    # Done, 15/30/1h/3h chips, 5 min–72 hr wheel — notification + overdue tap
+    ReminderSheet.kt    # Done, 15/30/1h/3h + time-of-day chips, 5 min–72 hr wheel
     ConfirmSheet.kt     # shared "are you sure?" chrome — every delete goes through it
     ClearDoneSheet.kt   # confirms CLEAR (the whole done list)
     DeleteTaskSheet.kt  # confirms deleting one task — the only exit for a repeater
@@ -384,6 +384,25 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   why there is no "back at …" footer — with no held choice there is nothing to
   preview, so each wheel row states the time it lands on instead. Adding a
   highlight back would promise a confirm step that does not exist.
+- **The time chips commit an absolute millis; the duration chips commit a count of
+  minutes.** Two callbacks on purpose. Converting a time to minutes-from-now at
+  composition time drifts by however long the user takes to tap, and
+  `ReminderActivity` snapshots its clock once at `setContent` and never refreshes —
+  a sheet left open five minutes would land "Tomorrow 08:00" at 08:05, which is the
+  same class of bug as the snooze-from-due-time one below. `Reminders.snoozeUntil`
+  stores the target verbatim. Its past-target branch is not dead code: the sheet can
+  sit open across the very rung it is offering, and arming `setAlarmClock` in the
+  past fires it at once, so it cancels the alarm and leaves the notification live —
+  "pester me now", the line `create` takes.
+- **The ladder generates from morning/afternoon/evening but never says so.** Once a
+  chip reads `13:00`, "afternoon" adds nothing, and four chips only get ~81dp each —
+  "Afternoon" at 15sp very nearly fills that alone. Both chip labels come from
+  `TaskTime`, so they cannot disagree with the wheel rows below about how a time is
+  written, 24-hour included. Verified unclipped at font scale 1.3.
+- **Both chip rows share one "Snooze" label.** They are one choice offered two ways —
+  how long from now, or what time to land on. "Snooze for" cannot cover the second
+  row (*snooze for 20:00* is wrong), which is what forces the neutral single label
+  rather than a matched pair.
 - **The reminder sheet has two hosts and exactly one implementation.**
   `ReminderActivity` raises it from the notification; `PeskyApp` raises it when an
   **overdue** row is tapped. Same composable, no host parameter — two variants

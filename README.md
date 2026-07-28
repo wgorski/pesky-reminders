@@ -28,16 +28,25 @@ It arrives like any other notification — and then it stays.
 The wording stays in the present tense — *"Is due Today, 08:00"* — however late it
 is. It's on your screen because the thing still wants doing.
 
-<img src="docs/screenshots/reminder-sheet.png" width="300" alt="The reminder's action sheet, with a Done pill, four snooze chips and the duration wheel">
+<img src="docs/screenshots/reminder-sheet.png" width="300" alt="The reminder's action sheet: a Done pill, a row of duration chips, a row of time-of-day chips, and the duration wheel">
 
-**Done** is the filled pill at the top — one tap and it's finished. Below it, four
-chips cover the common snoozes: 15 min, 30 min, 1 hr, 3 hr. Everything else is in the
-wheel underneath, starting at 5 minutes out and running to three days, coarsening as
-it goes (quarter-hours, then half-hours, then hours, then six-hour jumps) — and
-*every* row spells out the clock time it lands on, not just the long ones, so "3h"
-reads as the 7:15 it actually means. There's no confirm button anywhere in the sheet:
-whichever chip or wheel row you tap is the choice, committed the instant you tap it.
-Snoozing counts from **now**, not from when the reminder was originally due.
+**Done** is the filled pill at the top — one tap and it's finished. Below it, under a
+single **Snooze** heading, are two rows of chips. The first is durations: 15 min,
+30 min, 1 hr, 3 hr. The second names times of day instead — *20:00 Today*,
+*08:00 Tomorrow*, *13:00 Tomorrow* — always the next four still ahead of you, so at
+14:00 today's morning and afternoon are simply gone and the row starts at this
+evening. It's for the intent a duration is clumsy at: not "in three hours" but
+"tomorrow morning".
+
+Everything else is in the wheel underneath, starting at 5 minutes out and running to
+three days, coarsening as it goes (quarter-hours, then half-hours, then hours, then
+six-hour jumps) — and *every* row spells out the clock time it lands on, not just the
+long ones, so "3h" reads as the 7:15 it actually means.
+
+There's no confirm button anywhere in the sheet: whichever chip or wheel row you tap is
+the choice, committed the instant you tap it. The *durations* count from **now**, never
+from when the reminder was originally due; the time chips land on exactly the time they
+show.
 
 ## The list
 
