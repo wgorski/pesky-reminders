@@ -44,6 +44,9 @@ class ReminderActivity : ComponentActivity() {
         setContent {
             val id = taskId.intValue
             val task = remember(id) { TaskStore.find(this, id) }
+            // Hoisted out of the ReminderSheet call: all three actions report back
+            // through ActionToast now, and each one needs it.
+            val use24h = DateFormat.is24HourFormat(this)
             if (task == null) {
                 // Nothing to show for this id — e.g. it was deleted out from
                 // under us. Close rather than render a blank sheet.
@@ -53,23 +56,27 @@ class ReminderActivity : ComponentActivity() {
             ReminderSheet(
                 taskName = task.name,
                 nowMillis = System.currentTimeMillis(),
-                use24h = DateFormat.is24HourFormat(this),
+                use24h = use24h,
                 onDismiss = { close() },
                 onDone = {
                     // toggle can refuse a repeater whose slot has not come, but
                     // that cannot happen from here: a notification only exists
                     // once the slot has passed, and every snooze cancels it.
-                    // There is no PeskyApp to raise a toast on either — this
-                    // activity is closing.
-                    Reminders.toggle(this, id)
+                    val outcome = Reminders.toggle(this, id)
+                    // Posted before close(), and it survives it: ActionToast.show
+                    // builds through the application context precisely so a toast
+                    // outlives the activity that raised it.
+                    ActionToast.toggled(this, outcome, id, System.currentTimeMillis(), use24h)
                     close()
                 },
                 onSnooze = { minutes ->
-                    Reminders.snooze(this, id, minutes)
+                    val outcome = Reminders.snooze(this, id, minutes)
+                    ActionToast.snoozed(this, outcome, id, System.currentTimeMillis(), use24h)
                     close()
                 },
                 onSnoozeUntil = { atMillis ->
-                    Reminders.snoozeUntil(this, id, atMillis)
+                    val outcome = Reminders.snoozeUntil(this, id, atMillis)
+                    ActionToast.snoozed(this, outcome, id, System.currentTimeMillis(), use24h)
                     close()
                 },
             )

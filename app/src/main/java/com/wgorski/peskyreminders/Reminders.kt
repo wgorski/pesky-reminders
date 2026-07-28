@@ -10,11 +10,45 @@ import android.content.Context
  * condition and drift from it.
  */
 enum class ToggleOutcome {
-    /** The task moved: completed, reopened, or rolled to its next occurrence. */
-    CHANGED,
+    /** A one-off ticked off. It is in the done list now. */
+    COMPLETED,
+
+    /** A done task un-ticked, back among the active ones. */
+    REOPENED,
+
+    /**
+     * A repeater rolled on to its next occurrence. Never "done" — see [Reminders.toggle].
+     *
+     * Kept distinct from [REOPENED] because the two are not distinguishable from
+     * the outside. A done one-off can be edited into a repeater — the editor is
+     * reachable from a done row and [Reminders.update] carries `done` through — so
+     * `done && repeats` is a reachable state, and un-ticking it takes the reopen
+     * branch while looking exactly like a roll-forward. Anything inferring the
+     * outcome from the task afterwards would get that case wrong.
+     */
+    ADVANCED,
 
     /** A repeater whose slot has not come. Nothing happened, deliberately. */
     NOT_DUE_YET,
+
+    /** No such task — deleted from under the tap. */
+    MISSING,
+}
+
+/**
+ * What a snooze did.
+ *
+ * [ALREADY_PAST] belongs to [Reminders.snoozeUntil] alone: the sheet can sit open
+ * across the very rung it is offering, and the task is then left overdue and
+ * pestering rather than pushed. [Reminders.snooze] always lands in the future by
+ * construction, so it can only ever report [MOVED] or [MISSING].
+ */
+enum class SnoozeOutcome {
+    /** Pushed. The task's [Task.dueMillis] is where it landed. */
+    MOVED,
+
+    /** The target had already gone by. Still overdue, notification still up. */
+    ALREADY_PAST,
 
     /** No such task — deleted from under the tap. */
     MISSING,
@@ -150,7 +184,10 @@ object Reminders {
         ReminderNotifier.cancel(context, taskId)
         ReminderScheduler.cancelNag(context, taskId)
 
-        val next = if (!task.done && task.repeats) {
+        // Named rather than re-tested below, so which branch ran and which outcome
+        // is reported cannot drift apart.
+        val advancing = !task.done && task.repeats
+        val next = if (advancing) {
             task.copy(
                 dueMillis = TaskTime.nextOccurrence(task.slotMillis, task.repeat, now),
                 anchorMillis = null,
@@ -165,7 +202,11 @@ object Reminders {
         if (next.done || next.dueMillis <= now) ReminderScheduler.cancel(context, taskId)
         else ReminderScheduler.schedule(context, next)
 
-        return ToggleOutcome.CHANGED
+        return when {
+            advancing -> ToggleOutcome.ADVANCED
+            next.done -> ToggleOutcome.COMPLETED
+            else -> ToggleOutcome.REOPENED
+        }
     }
 
     /**
@@ -290,8 +331,12 @@ object Reminders {
      * every following day to 9:30. The first snooze wins: snoozing again keeps the
      * slot already recorded rather than anchoring to the snooze.
      */
-    fun snooze(context: Context, taskId: Int, minutes: Int = SnoozeOptions.DEFAULT_MINUTES) {
-        val task = TaskStore.find(context, taskId) ?: return
+    fun snooze(
+        context: Context,
+        taskId: Int,
+        minutes: Int = SnoozeOptions.DEFAULT_MINUTES,
+    ): SnoozeOutcome {
+        val task = TaskStore.find(context, taskId) ?: return SnoozeOutcome.MISSING
         ReminderNotifier.cancel(context, taskId)
         ReminderScheduler.cancelNag(context, taskId)
         val from = System.currentTimeMillis()
@@ -301,6 +346,7 @@ object Reminders {
         )
         TaskStore.replace(context, next)
         ReminderScheduler.schedule(context, next)
+        return SnoozeOutcome.MOVED
     }
 
     /**
@@ -320,8 +366,8 @@ object Reminders {
      * Unlike [snooze], the target is not guaranteed to be in the future — see the
      * past branch below.
      */
-    fun snoozeUntil(context: Context, taskId: Int, atMillis: Long) {
-        val task = TaskStore.find(context, taskId) ?: return
+    fun snoozeUntil(context: Context, taskId: Int, atMillis: Long): SnoozeOutcome {
+        val task = TaskStore.find(context, taskId) ?: return SnoozeOutcome.MISSING
         val now = System.currentTimeMillis()
         // Read before anything is cancelled — the past branch needs to know
         // whether there was a notification to put back.
@@ -334,9 +380,10 @@ object Reminders {
         )
         TaskStore.replace(context, next)
 
-        if (atMillis > now) {
+        return if (atMillis > now) {
             ReminderNotifier.cancel(context, taskId)
             ReminderScheduler.schedule(context, next)
+            SnoozeOutcome.MOVED
         } else {
             // The sheet sat open across the very rung it was offering. Never arm
             // setAlarmClock in the past — it fires at once. Take the line
@@ -344,6 +391,7 @@ object Reminders {
             // reminder stays overdue with its notification live.
             ReminderScheduler.cancel(context, taskId)
             if (showing) notify(context, taskId)
+            SnoozeOutcome.ALREADY_PAST
         }
     }
 }

@@ -1,7 +1,6 @@
 package com.wgorski.peskyreminders.ui
 
 import android.text.format.DateFormat
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,11 +16,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.wgorski.peskyreminders.ActionToast
 import com.wgorski.peskyreminders.Reminders
 import com.wgorski.peskyreminders.Settings
 import com.wgorski.peskyreminders.TaskStore
-import com.wgorski.peskyreminders.TaskTime
-import com.wgorski.peskyreminders.ToggleOutcome
 import kotlinx.coroutines.delay
 
 @Composable
@@ -74,20 +72,13 @@ fun PeskyApp() {
                 doneExpanded = doneExpanded,
                 onToggleDoneSection = { doneExpanded = !doneExpanded },
                 onToggleTask = { id ->
-                    // A repeater that is not due yet refuses the tick, on purpose —
-                    // rolling it forward would skip the occurrence still ahead. Say
-                    // so, or the circle is a control that visibly does nothing.
-                    if (Reminders.toggle(context, id) == ToggleOutcome.NOT_DUE_YET) {
-                        TaskStore.tasks.firstOrNull { it.id == id }?.let { task ->
-                            Toast.makeText(
-                                context,
-                                "Not due until " +
-                                    TaskTime.formatFull(task.dueMillis, now, use24h) + ".",
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                        }
-                    }
+                    // Every outcome has something to say, the refusal included: a
+                    // repeater that is not due yet declines the tick on purpose,
+                    // and unreported that makes the circle a control which visibly
+                    // does nothing. Which sentence is [ActionToast]'s call.
+                    val outcome = Reminders.toggle(context, id)
                     now = System.currentTimeMillis()
+                    ActionToast.toggled(context, outcome, id, now, use24h)
                 },
                 onAdd = { sheetOpen = true },
                 onOpenSettings = { settingsOpen = true },
@@ -125,23 +116,29 @@ fun PeskyApp() {
                             // toggle cannot refuse here: the row is overdue, so
                             // its slot has passed. Same argument as the
                             // notification's own Done.
-                            Reminders.toggle(context, id)
+                            val outcome = Reminders.toggle(context, id)
                             now = System.currentTimeMillis()
+                            ActionToast.toggled(context, outcome, id, now, use24h)
                             remindTaskId = null
                         },
                         onSnooze = { minutes ->
-                            Reminders.snooze(context, id, minutes)
+                            val outcome = Reminders.snooze(context, id, minutes)
                             // Re-band the row straight away — it has just left
-                            // OVERDUE for somewhere in the future.
+                            // OVERDUE for somewhere in the future. The toast reads
+                            // the same refreshed clock, so it cannot name a time
+                            // the row's own label disagrees with.
                             now = System.currentTimeMillis()
+                            ActionToast.snoozed(context, outcome, id, now, use24h)
                             remindTaskId = null
                         },
                         onSnoozeUntil = { atMillis ->
-                            Reminders.snoozeUntil(context, id, atMillis)
+                            val outcome = Reminders.snoozeUntil(context, id, atMillis)
                             // Same re-band as above. A target already past is the
                             // one case the row stays in OVERDUE, and re-reading
-                            // the clock is what keeps it there correctly.
+                            // the clock is what keeps it there correctly — and
+                            // what has the toast say so rather than claim a move.
                             now = System.currentTimeMillis()
+                            ActionToast.snoozed(context, outcome, id, now, use24h)
                             remindTaskId = null
                         },
                     )

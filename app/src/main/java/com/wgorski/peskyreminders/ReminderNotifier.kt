@@ -89,7 +89,10 @@ object ReminderNotifier {
         ensureChannel(context)
         val manager = context.getSystemService(NotificationManager::class.java)
         val now = System.currentTimeMillis()
-        val due = TaskTime.formatFull(task.dueMillis, now, !DateFormat.is24HourFormat(context))
+        // Not negated. It was, which showed a 24-hour device "5:17 PM" while the
+        // list row beside it read "17:17" for the same task — and now the toast
+        // that reports snoozing it would have disagreed too.
+        val due = TaskTime.formatFull(task.dueMillis, now, DateFormat.is24HourFormat(context))
 
         val open = openSheetIntent(context, task.id)
         val notification = NotificationCompat.Builder(context, ReminderContract.CHANNEL_ID)

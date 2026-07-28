@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.text.format.DateFormat
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.rule.GrantPermissionRule
@@ -90,6 +91,25 @@ class ReminderModelTest {
         assertNotNull("precondition: posted", active())
         val text = postedText()
         assertTrue("expected an 'Is due …' line, got: $text", text!!.startsWith("Is due "))
+    }
+
+    /**
+     * The notification must follow the device clock, not the opposite of it.
+     *
+     * It used to pass the flag negated, so a 24-hour device read "Is due Today,
+     * 5:17 PM" directly above a list row saying "Was due Today, 17:17" — and now a
+     * toast reporting the same task's snooze would have disagreed with it too.
+     */
+    @Test fun the_notification_follows_the_devices_own_clock_format() {
+        val due = TaskStore.find(context, taskId)!!.dueMillis
+        deliver(ReminderContract.ACTION_FIRE)
+        assertNotNull("precondition: posted", active())
+
+        val expected = TaskTime.formatTime(due, DateFormat.is24HourFormat(context))
+        assertTrue(
+            "expected the due time written as '$expected', got: ${postedText()}",
+            postedText()!!.contains(expected),
+        )
     }
 
     /** Even late, it stays in the present tense — it is still asking to be done. */
@@ -796,14 +816,19 @@ class ReminderModelTest {
         assertNull(after.anchorMillis)
     }
 
-    @Test fun a_tick_that_lands_reports_that_it_changed_something() {
+    /**
+     * Completing and reopening are reported apart, not as one "it changed".
+     * `ActionToast` picks a different sentence for each, and a done one-off edited
+     * into a repeater makes them indistinguishable from the task alone.
+     */
+    @Test fun a_tick_that_lands_reports_which_way_it_went() {
         TaskStore.clear(context)
         taskId = TaskStore.add(
             context, "Book dentist", System.currentTimeMillis() + 60_000L, Repeat.ONCE,
         ).id
-        assertEquals(ToggleOutcome.CHANGED, Reminders.toggle(context, taskId))
+        assertEquals(ToggleOutcome.COMPLETED, Reminders.toggle(context, taskId))
         // And again, reopening it.
-        assertEquals(ToggleOutcome.CHANGED, Reminders.toggle(context, taskId))
+        assertEquals(ToggleOutcome.REOPENED, Reminders.toggle(context, taskId))
     }
 
     @Test fun ticking_a_task_that_is_already_gone_reports_it_missing() {
@@ -813,7 +838,7 @@ class ReminderModelTest {
 
     @Test fun a_repeater_whose_slot_has_come_reports_that_it_rolled() {
         seedDailyDueAt(1)
-        assertEquals(ToggleOutcome.CHANGED, Reminders.toggle(context, taskId))
+        assertEquals(ToggleOutcome.ADVANCED, Reminders.toggle(context, taskId))
     }
 
     /** Only repeaters are protected — finishing a one-off early is just finishing it. */
