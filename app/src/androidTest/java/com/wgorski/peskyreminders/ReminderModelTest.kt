@@ -151,6 +151,105 @@ class ReminderModelTest {
         assertNotNull("dismissal must immediately re-post the notification", active())
     }
 
+    // ---- how loudly each post announces itself -------------------------------
+
+    /**
+     * The reminder arriving is the one event allowed to make a noise, and the
+     * sound lives on the channel — it cannot be overridden per notification on
+     * API 26+, so the channel a post lands on *is* whether it sounds.
+     */
+    @Test fun the_reminder_arriving_lands_on_the_channel_with_a_sound() {
+        deliver(ReminderContract.ACTION_FIRE)
+        assertEquals(
+            ReminderContract.CHANNEL_ID,
+            active()!!.notification.channelId,
+        )
+    }
+
+    /**
+     * Swiping it away must not answer back. Driven through the notification's own
+     * delete-intent, like [dismissing_notification_triggers_repost], because that
+     * is the only path that proves the real wiring.
+     */
+    @Test fun a_swipe_puts_it_back_without_a_sound() {
+        deliver(ReminderContract.ACTION_FIRE)
+        val posted = active()
+        assertNotNull("precondition: posted", posted)
+
+        posted!!.notification.deleteIntent.send()
+        Thread.sleep(400)
+
+        val back = active()
+        assertNotNull("precondition: re-posted", back)
+        assertEquals(
+            "a re-post after a swipe must be silent",
+            ReminderContract.QUIET_CHANNEL_ID,
+            back!!.notification.channelId,
+        )
+    }
+
+    /**
+     * The nag keeps its buzz — driven by us, not the channel — but must never
+     * chime, however many times it repeats.
+     */
+    @Test fun the_nag_repeats_without_a_sound() {
+        deliver(ReminderContract.ACTION_FIRE)
+        assertNotNull("precondition: posted", active())
+
+        deliver(ReminderContract.ACTION_NAG)
+
+        val nagged = active()
+        assertNotNull("the nag must leave the notification up", nagged)
+        assertEquals(
+            "a nag must not carry a sound",
+            ReminderContract.QUIET_CHANNEL_ID,
+            nagged!!.notification.channelId,
+        )
+    }
+
+    /** Both channels have to exist, or a post to the quiet one is dropped. */
+    @Test fun both_channels_are_created() {
+        ReminderNotifier.ensureChannel(context)
+        assertNotNull(nm.getNotificationChannel(ReminderContract.CHANNEL_ID))
+        assertNotNull(nm.getNotificationChannel(ReminderContract.QUIET_CHANNEL_ID))
+        assertNull(
+            "the quiet channel must have no sound — that is its whole purpose",
+            nm.getNotificationChannel(ReminderContract.QUIET_CHANNEL_ID).sound,
+        )
+        assertNotNull(
+            "the reminder channel keeps its sound",
+            nm.getNotificationChannel(ReminderContract.CHANNEL_ID).sound,
+        )
+    }
+
+    /**
+     * The arrival buzz belongs to the channel now, so that the system plays it
+     * with the notification rather than us racing our own process being frozen.
+     * A channel's alerting is frozen at creation, so if this ever fails the id
+     * was not bumped and no existing install would pick the change up.
+     */
+    @Test fun the_reminder_channel_vibrates_and_the_quiet_one_does_not() {
+        ReminderNotifier.ensureChannel(context)
+        val reminder = nm.getNotificationChannel(ReminderContract.CHANNEL_ID)
+        val quiet = nm.getNotificationChannel(ReminderContract.QUIET_CHANNEL_ID)
+
+        assertTrue("an arriving reminder is buzzed by its channel", reminder.shouldVibrate())
+        assertNotNull("…to the app's own pattern", reminder.vibrationPattern)
+        assertFalse(
+            "the quiet channel must not buzz — the nag buzzes itself, and a " +
+                "re-post must not buzz at all",
+            quiet.shouldVibrate(),
+        )
+    }
+
+    /** The superseded channels must be gone, or the user sees stale duplicates. */
+    @Test fun older_channel_generations_are_removed() {
+        ReminderNotifier.ensureChannel(context)
+        ReminderContract.LEGACY_CHANNEL_IDS.forEach { old ->
+            assertNull("$old should have been deleted", nm.getNotificationChannel(old))
+        }
+    }
+
     @Test fun done_clears_it() {
         deliver(ReminderContract.ACTION_FIRE)
         assertNotNull("precondition: posted", active())

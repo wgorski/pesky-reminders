@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The preview build's icon, and the only reason this source set exists: it
+      installs *alongside* the real app, so the two have to be tellable apart at a
+      glance on the home screen.
+
+      Green because it is as far from the crimson as the palette gets while still
+      carrying the cream bell — the foreground is unchanged, so contrast is the
+      one thing to check when touching this. Nothing in the app's own UI uses
+      this colour; `PeskyColors.Accent` is the in-app accent and stays crimson,
+      deliberately, so the preview behaves and looks like the real build
+      everywhere except the launcher.
+    -->
+    <color name="ic_launcher_background">#1B7F3B</color>
+</resources>

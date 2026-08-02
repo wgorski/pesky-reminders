@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      A resource rather than a literal in the manifest so a build variant can
+      override it: the `preview` build installs alongside this one and has to be
+      tellable apart in the launcher. See app/src/preview/res.
+    -->
+    <string name="app_name">Pesky Reminders</string>
+</resources>

@@ -87,7 +87,7 @@ adb shell am start -n com.wgorski.peskyreminders/.MainActivity
 
 Two tiers, and they cover different things.
 
-**Deterministic (JVM, ~9s, no device)** — `app/src/test/`, 205 tests. Robolectric hosts
+**Deterministic (JVM, ~9s, no device)** — `app/src/test/`, 224 tests. Robolectric hosts
 the real composables, and every screen takes `nowMillis` as a parameter instead of
 reading the clock, so each expected label is a fixed string. `TaskTimeTest` covers the
 date maths; `TaskListScreenTest`, `AddTaskSheetTest` and `EditTaskSheetTest` drive
@@ -100,7 +100,7 @@ every control in the UI. Tests pin `TimeZone` to UTC so they pass on any machine
 - They also gate `git push` via `.githooks/pre-push`. Enable once per clone:
   `git config core.hooksPath .githooks`. Bypass with `git push --no-verify`.
 
-**Device (emulator)** — `app/src/androidTest/`, 61 tests. `ReminderModelTest` is the
+**Device (emulator)** — `app/src/androidTest/`, 65 tests. `ReminderModelTest` is the
 real proof of the notification model: it fires the notification's own delete-intent,
 which is exactly what the OS sends on a swipe. Note it calls `TaskStore.clear()`, so
 running it **wipes the task list on the device**.
@@ -158,6 +158,38 @@ cp app/build/outputs/apk/release/pesky-reminders-$V.apk dist/pesky-reminders.apk
 - Install the **release** APK on the emulator and confirm `versionName` before
   reporting it done; the debug build passing is not evidence about the one being
   staged. Hash the staged copies against the build output if anything moved them.
+
+## The preview build — try a release candidate next to the real app
+
+`assemblePreview` produces a **parallel-installable** dress rehearsal for the Play
+build: `com.wgorski.peskyreminders.preview`, a green launcher icon, its own task
+list. Use it to test on a real phone without risking the list you rely on.
+
+```bash
+# Build, stage in dist/preview/, and serve it on the LAN (port 9998).
+.claude/skills/preview/serve-preview.sh
+```
+
+Everything about it is in the `preview` skill (`.claude/skills/preview/`). Four
+facts worth having here:
+
+- It is `initWith(release)`, **not** debug — the point is to exercise what ships,
+  so it inherits release's minification and lack of `debuggable`.
+- `applicationIdSuffix = ".preview"` is what makes it a separate app. The
+  **namespace is untouched**, so `R`, `BuildConfig` and every
+  `Intent(context, ReminderReceiver::class.java)` still resolve.
+- It is **always debug-signed**, even when the upload key is configured. Signing a
+  test build for Play buys nothing, and an upload-signed preview could not later
+  be replaced by a debug-signed one without an uninstall.
+- **Don't bump the version to cut a preview.** It must carry the version you are
+  about to ship, or you are testing something else; `versionNameSuffix` is what
+  distinguishes the artifact.
+
+The green icon and label come from `app/src/preview/res` overriding exactly two
+resources — `ic_launcher_background` and `app_name`. That is why the label is a
+string resource rather than a literal in the manifest. The in-app accent stays
+crimson deliberately: the preview should look and behave like the real build
+everywhere except the launcher.
 
 ## When I ask you to "expose the apk locally"
 
@@ -245,8 +277,8 @@ app/src/main/java/com/wgorski/peskyreminders/
   ui/
     Theme.kt            # PeskyColors tokens + Bricolage Grotesque / DM Sans families
     PeskyIcons.kt       # the design's icon set as stroked ImageVectors
-    Common.kt           # PeskyType text styles, pressable (opt-in long-press) / tap
-    PeskySheet.kt       # shared bottom-sheet chrome (scrim, entrance, tap-swallow)
+    Common.kt           # PeskyType text styles, pressable / tap (both drop keyboard focus)
+    PeskySheet.kt       # shared sheet chrome (scrim, entrance, tap-swallow, drag-to-dismiss)
     PeskyApp.kt         # root: sheet + done-section state, the "now" ticker
     TaskListScreen.kt   # header, the DueGroup bands + Done section, FAB, tap/hold routing
     TaskSheet.kt        # add AND edit in one: name, repeat, save, the action rows
@@ -270,6 +302,7 @@ app/src/test/               # deterministic JVM suite (Robolectric-hosted Compos
   ui/EditTaskSheetTest.kt   #   seeding, one-field edits, the action rows
   ui/SettingsSheetTest.kt   #   the nag switch and interval field
   ui/ReminderSheetTest.kt   #   Done, chips, wheel, one-tap commit
+  ui/PeskySheetTest.kt      #   the drag rule (pure) + what the drag must not break
   ui/ClearDoneSheetTest.kt  #   the clear-done confirmation
   ui/DeleteTaskSheetTest.kt #   the delete-one-task confirmation
   SettingsTest.kt           #   interval clamping
@@ -332,11 +365,40 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   the entire sheet into one semantics node — a single giant "button" to a screen
   reader, and unreachable to a UI test. The working shape is a
   `Box(Modifier.matchParentSize().tap {})` *sibling behind* the content.
+- **A pointer-input modifier shadows the swallow layer behind it.** Hit testing stops
+  at the topmost sibling that registers, and `draggable` does **not** consume a tap
+  that never becomes a drag — so the tap carries on past it to the scrim. The sheet's
+  drag handle hit exactly this: as a `Column` *beside* the swallow it shadowed it, and
+  a tap on the title bar closed the sheet. The fix is that the `draggable` sits on a
+  `Box` that **parents** its own swallow layer; children are still hit, siblings are
+  not. Anything else gaining a gesture modifier inside a sheet needs the same shape.
+- **The sheet drag cannot be tested through Compose's pointer injection.** Robolectric
+  misroutes drags inside these sheets — a `performTouchInput` swipe on the grabber
+  leaks to the scrim and dismisses, so the test passes or fails for reasons unrelated
+  to the code (verified with a throwaway probe: the isolated equivalent is correct
+  under Robolectric, and the real gesture is correct on a device). So the letting-go
+  rule is pure — `shouldDismiss`/`dragFraction` in `PeskySheet.kt` — and tested
+  exactly, while the gesture that feeds it is an emulator check. Don't "restore" a
+  swipe test; it will lie in whichever direction it happens to land.
 - **Kotlin nests block comments.** A `/*` inside a KDoc (e.g. writing a path like
   `assets/icons/*.svg`) opens a nested comment and swallows the rest of the file.
-- **The name field does not auto-focus** — a deliberate deviation from the design's
-  `autoFocus`. On a phone that threw the keyboard up over the time pickers before the
-  user had decided whether they wanted to type at all. Don't "fix" it back.
+- **The name field auto-focuses when adding, and only when adding.** It used to
+  refuse focus everywhere — the keyboard covers the time pickers before the user has
+  decided whether they want to type. That still holds for an **edit**, which is
+  usually a trip to change the time, so `NameField` takes `autoFocus = existing ==
+  null` and the edit path is untouched. Adding is the case where the name is the one
+  thing the sheet cannot default and the only thing Save waits on. Both halves are
+  pinned — `assertIsFocused` in `AddTaskSheetTest`, `assertIsNotFocused` in
+  `EditTaskSheetTest` — so neither can quietly become the other. Checked at font
+  scale 1.3 with the keyboard up: the body scrolls, the footer stays pinned, the
+  focused field is on screen.
+- **Tapping anything puts the keyboard away, and that lives in `pressable`/`tap`.**
+  Both wrap their click in `dismissingKeyboard`, so the rule is true everywhere at
+  once — wheels, tabs, calendar cells, chips, Save, list rows, and the sheets'
+  tap-swallow layer, which is a `tap {}` onto nothing. A `BasicTextField` is neither
+  of those, so tapping the field itself never routes through it. Don't add a second
+  copy anywhere. The one caller that notices is the settings interval, which clamps
+  on focus loss — wanted, and already tested.
 - **Never lose a typed value on focus alone.** Hiding the keyboard does NOT clear
   Compose focus, so `onFocusChanged` never fires and the value is silently dropped.
   The settings interval commits on each keystroke once it parses in range, and
@@ -386,6 +448,41 @@ does NOT fire the delete-intent, so those clear the notification without re-post
     `ReminderActivity.finishAndRemoveTask()`.
   `ACTION_FIRE`/`REPOST`/`NAG` stay silent: the app talking to itself is not a user
   action to confirm.
+- **How loudly a post announces itself is `ReminderNotifier.Alert`, and there are three
+  levels because there are three different events.** `FULL` (the reminder arriving)
+  sounds and buzzes; `BUZZ_ONLY` (the nag) buzzes; `SILENT` (a re-post after a swipe, an
+  edit that leaves the task overdue, a snooze onto a time already gone) does neither.
+  A swipe answering back with a chime and a buzz read as the app arguing with you.
+  Three things hold it together:
+  - **The sound is always Android's; the buzz depends on which event it is.** `FULL`
+    lets the **channel** vibrate, because the system plays that as part of posting the
+    notification and nothing about this process's lifetime can truncate it — the
+    app-driven waveform could be, and that is the likeliest reason an arriving reminder
+    was sometimes not felt with the screen off. `BUZZ_ONLY` must still self-buzz: a nag
+    only *updates* a notification already showing and `setOnlyAlertOnce` stops the
+    channel re-alerting. Nothing races, because the only self-buzz left lands on the
+    quiet channel, which has vibration off. The trade: a channel vibration is
+    suppressed in full silent mode, where the app-driven one survived via
+    `USAGE_ALARM`; the nag still survives it.
+  - **Changing how a channel alerts means a new channel id.** Its settings are frozen
+    at creation, so `_v2` → `_v3` when the channel took over the arrival buzz.
+    `LEGACY_CHANNEL_IDS` is the migration and `ensureChannel` deletes every older id.
+    Getting this wrong fails *silently* — existing installs just never pick the change
+    up — so a test asserts the old ids are gone.
+  - **Which is why the sound level *is* the channel.** `QUIET_CHANNEL_ID` is
+    `CHANNEL_ID` with `setSound(null, null)`, and `Alert.channelId` picks between them.
+    Everything after a reminder's first appearance is silent by construction rather
+    than by relying on `setOnlyAlertOnce`, which only suppresses re-alerts of a
+    notification *still on screen* — and a swipe removes it first, so the re-post is a
+    **fresh** post that flag never sees.
+  - **Do not "simplify" this to `NotificationCompat.setSilent(true)`.** It silences by
+    moving the notification into a group keyed `silent`, which drops it out of the app's
+    stack in the shade — measured in `dumpsys notification` as `groupKey=silent` beside
+    the normal `ranker_group`/`AUTOGROUP_SUMMARY`, so a swiped reminder visibly jumps
+    out of the group. The second channel costs one extra row in the system notification
+    settings and nothing else. Four instrumented tests pin the routing.
+  - **Don't turn `setOnlyAlertOnce` off to make the nag repeat.** The repeat is ours;
+    that flag is what keeps Android from chiming on every interval.
 - **The notification follows the device clock, and there is a test pinning it.** It used
   to pass `is24HourFormat` **negated**, so a 24-hour device read "Is due Today, 5:17 PM"
   directly above a row saying "Was due Today, 17:17". Nothing caught it because the tests

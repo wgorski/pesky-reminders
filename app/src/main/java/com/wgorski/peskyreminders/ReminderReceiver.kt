@@ -16,7 +16,11 @@ class ReminderReceiver : BroadcastReceiver() {
             // FIRE, REPOST and NAG stay silent: those are the app talking to
             // itself, not a user action there is anything to confirm.
             ReminderContract.ACTION_FIRE -> Reminders.notify(context, taskId)
-            ReminderContract.ACTION_REPOST -> Reminders.notify(context, taskId)
+            // Silent. This is the swipe being undone — the user just tried to
+            // get rid of it, and answering with a sound and a buzz reads as the
+            // app arguing back. The notification reappearing is the whole
+            // statement.
+            ReminderContract.ACTION_REPOST -> Reminders.repost(context, taskId)
             ReminderContract.ACTION_DONE -> {
                 val outcome = Reminders.toggle(context, taskId)
                 // The one surface with no composition to inherit the clock format

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Short, because the launcher truncates at about 12 characters. -->
+    <string name="app_name">Pesky preview</string>
+</resources>

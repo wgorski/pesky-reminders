@@ -5,6 +5,8 @@ import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -112,6 +114,60 @@ class AddTaskSheetTest {
      * (15:00), so picking hour 20 lands on 8pm tonight.
      */
     private fun pickATime() = tapWheel("HOUR", 20)
+
+    // ---- the name field -----------------------------------------------------
+
+    /**
+     * A new pester opens ready to type. The name is the one thing the sheet
+     * cannot default, so the keyboard is wanted every time — unlike an edit,
+     * which is pinned to the opposite in [EditTaskSheetTest].
+     */
+    @Test fun the_name_field_takes_focus_on_open() {
+        showSheet()
+        compose.onNodeWithTag("name-field").assertIsFocused()
+    }
+
+    /**
+     * Tapping anything else puts the keyboard away. Every tappable thing in the
+     * app is a `pressable` or a `tap`, and both clear focus, so a repeat chip
+     * stands in for all of them here.
+     */
+    @Test fun tapping_elsewhere_releases_the_keyboard() {
+        showSheet()
+        typeName()
+        compose.onNodeWithTag("name-field").assertIsFocused()
+
+        tapTag("repeat-Daily")
+
+        compose.onNodeWithTag("name-field").assertIsNotFocused()
+    }
+
+    /**
+     * The dead space *inside* the scrolling body — a field label, the gap under
+     * the text box — must release it too. That space belongs to no control, so it
+     * relies on the body's own swallow layer; the sheet-wide one cannot see it,
+     * because `verticalScroll` is a pointer-input node and shadows it. Tapping
+     * there did nothing until the body got a swallow of its own.
+     */
+    @Test fun tapping_the_body_dead_space_releases_the_keyboard() {
+        showSheet()
+        typeName()
+        compose.onNodeWithTag("name-field").assertIsFocused()
+
+        compose.onNodeWithTag("sheet-body-swallow")
+            .performSemanticsAction(SemanticsActions.OnClick)
+
+        compose.onNodeWithTag("name-field").assertIsNotFocused()
+    }
+
+    /** …and does not cost the user what they had already typed. */
+    @Test fun releasing_the_keyboard_keeps_the_typed_name() {
+        showSheet()
+        typeName("Feed the sourdough")
+        tapTag("repeat-Daily")
+        tapTag("save-button")
+        assertEquals("Feed the sourdough", savedName)
+    }
 
     // ---- the preselected time -----------------------------------------------
 
