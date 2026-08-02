@@ -5,6 +5,7 @@ import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -113,6 +114,20 @@ class EditTaskSheetTest {
     }
 
     private fun save() = tapTag("save-button")
+
+    // ---- the name field ------------------------------------------------------
+
+    /**
+     * The other half of the rule in [AddTaskSheetTest]: editing does NOT grab
+     * focus. Opening a task is usually a trip to change its time, and the
+     * keyboard would cover the pickers before the user asked for it. Only the
+     * add path was reversed; if this ever starts failing, that reversal has
+     * leaked.
+     */
+    @Test fun editing_leaves_the_keyboard_down() {
+        showSheet(weekly)
+        compose.onNodeWithTag("name-field").assertIsNotFocused()
+    }
 
     // ---- it is the same sheet, worded for an edit ----------------------------
 

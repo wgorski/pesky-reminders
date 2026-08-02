@@ -22,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -82,6 +83,8 @@ object PeskyType {
  * a test can fire the gesture directly. Left null, this stays a plain
  * `clickable` and the node carries no long-press action at all — worth keeping,
  * because a row advertising a gesture that does nothing reads as broken.
+ *
+ * Like [tap], it drops text-field focus first — see [dismissingKeyboard].
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -106,15 +109,15 @@ fun Modifier.pressable(
                     interactionSource = interaction,
                     indication = null,
                     enabled = enabled,
-                    onClick = onClick,
+                    onClick = dismissingKeyboard(onClick),
                 )
             } else {
                 Modifier.combinedClickable(
                     interactionSource = interaction,
                     indication = null,
                     enabled = enabled,
-                    onLongClick = onLongClick,
-                    onClick = onClick,
+                    onLongClick = dismissingKeyboard(onLongClick),
+                    onClick = dismissingKeyboard(onClick),
                 )
             }
         )
@@ -125,8 +128,28 @@ fun Modifier.pressable(
 fun Modifier.tap(onClick: () -> Unit): Modifier = this.clickable(
     interactionSource = remember { MutableInteractionSource() },
     indication = null,
-    onClick = onClick,
+    onClick = dismissingKeyboard(onClick),
 )
+
+/**
+ * Wraps a click so it releases text-field focus — and with it the keyboard —
+ * before doing its own job.
+ *
+ * Every tappable thing in the app is a [pressable] or a [tap], so putting it
+ * here is what makes "tap anywhere else and the keyboard goes away" true
+ * everywhere at once, including the sheets' tap-swallow layer, which is a
+ * `tap {}` onto nothing. Any other copy of the rule would be one more place to
+ * forget it. Typing into a field is unaffected: a `BasicTextField` is neither of
+ * these, so tapping the field itself never routes through here.
+ *
+ * The one caller that notices is the settings interval, which clamps on focus
+ * loss — that is the wanted behaviour, and it is already covered by a test.
+ */
+@Composable
+private fun dismissingKeyboard(action: () -> Unit): () -> Unit {
+    val focus = LocalFocusManager.current
+    return { focus.clearFocus(); action() }
+}
 
 /** A rounded, optionally outlined surface — the recurring card/chip/field shape. */
 @Composable

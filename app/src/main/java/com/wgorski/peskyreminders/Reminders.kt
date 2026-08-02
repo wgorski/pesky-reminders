@@ -89,11 +89,32 @@ object Reminders {
         }
     }
 
-    /** Post (or re-post) a task's notification, unless it is already dealt with. */
-    fun notify(context: Context, taskId: Int) {
+    /**
+     * The reminder arriving: post it with sound and a buzz.
+     *
+     * This is the only path that makes a noise, and the alarm firing is the only
+     * caller that should take it. Everything else that puts the same
+     * notification back on screen goes through [repost].
+     */
+    fun notify(context: Context, taskId: Int) =
+        post(context, taskId, ReminderNotifier.Alert.FULL)
+
+    /**
+     * Put the same notification back, or refresh it in place, saying nothing.
+     *
+     * Three callers, one shape: the swipe's delete-intent, an edit that leaves
+     * the task overdue, and a snooze onto a time that has already passed. In all
+     * three the reminder was already on screen and the user knows it — a buzz
+     * would be the app answering back, and after a *swipe* it reads as the app
+     * arguing with you.
+     */
+    fun repost(context: Context, taskId: Int) =
+        post(context, taskId, ReminderNotifier.Alert.SILENT)
+
+    private fun post(context: Context, taskId: Int, alert: ReminderNotifier.Alert) {
         val task = TaskStore.find(context, taskId) ?: return
         if (task.done) return
-        ReminderNotifier.post(context, task)
+        ReminderNotifier.post(context, task, alert)
         scheduleNextNag(context, taskId)
     }
 
@@ -116,7 +137,10 @@ object Reminders {
             ReminderScheduler.cancelNag(context, taskId)
             return
         }
-        ReminderNotifier.post(context, task) // post() does the buzzing
+        // A buzz but no chime. The nag repeats on an interval the user chose, and
+        // a notification sound every few minutes is intolerable; the buzz is what
+        // they asked for. See ReminderNotifier.Alert.
+        ReminderNotifier.post(context, task, ReminderNotifier.Alert.BUZZ_ONLY)
         scheduleNextNag(context, taskId)
     }
 
@@ -261,7 +285,10 @@ object Reminders {
 
             else -> {
                 ReminderScheduler.cancel(context, taskId)
-                if (showing) notify(context, taskId)
+                // Silent: this only refreshes a notification the user is looking
+                // at so it picks up the new name. They pressed Save a moment ago
+                // — buzzing them about their own edit is noise.
+                if (showing) repost(context, taskId)
             }
         }
     }
@@ -390,7 +417,9 @@ object Reminders {
             // `create` takes for a past due time instead: pester me now, so the
             // reminder stays overdue with its notification live.
             ReminderScheduler.cancel(context, taskId)
-            if (showing) notify(context, taskId)
+            // Silent, like the edit-refresh above: the notification never left,
+            // and the toast already says "…has passed — still due."
+            if (showing) repost(context, taskId)
             SnoozeOutcome.ALREADY_PAST
         }
     }

@@ -17,10 +17,13 @@ and from there either **snooze** it or mark it **Done**.
 It arrives like any other notification — and then it stays.
 
 - **Swipe it away** and it reappears immediately, in the same place, with the same
-  two actions.
+  two actions — and this time without a sound or a buzz. It came back; that is the
+  whole statement, and answering a swipe with a chime reads as the app arguing.
 - **Clear all** skips it. So does clearing from the lock screen.
 - If you leave it sitting there it **buzzes again every 5 minutes** until you deal
   with it. (You can change the interval, or switch the nagging off — see Settings.)
+  It buzzes, it doesn't chime: the sound belongs to the reminder *arriving*, once.
+  A notification tone every five minutes is how an app gets uninstalled.
 - **Tap the body, or Snooze** — both open the same sheet, with every way out in one
   place. The sheet floats over whatever you were doing rather than opening the app,
   and once you've chosen it gets out of the way and puts you back there.
@@ -91,7 +94,11 @@ The **+** button opens one sheet: what to nag you about, when, and how often.
 A time is always already chosen — about an hour from now, rounded to the hour, or
 tomorrow morning at 8:00 if it's already late in the evening. So the name is the only
 thing you actually have to fill in, and the button at the bottom stays greyed out
-until you do.
+until you do. It's also the only thing the sheet can't guess, so **the keyboard is
+already up** when the sheet opens, capitalised and waiting. Tap anywhere else — a
+wheel, a chip, the empty space — and it gets out of the way. (Opening an *existing*
+task doesn't do this: that's usually a trip to change the time, and the keyboard
+would be sitting on top of the pickers.)
 
 Pick the time whichever way suits:
 
@@ -103,6 +110,11 @@ Pick the time whichever way suits:
 
 Either way, the crimson line above **Repeat** is the truth: *Today, 10:00 AM*. Then
 choose **Once**, **Daily**, **Weekly** or **Monthly**, and hit **Pester me**.
+
+Changed your mind? Every sheet in the app can be **dragged away by the bar at the
+top** — take hold of the grabber or the title and throw it downwards, and it goes.
+Let go too early and it springs back. The **✕** and a tap outside still work; this is
+just the one your thumb is already near.
 
 ## Changing your mind
 

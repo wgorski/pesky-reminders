@@ -20,22 +20,90 @@ object ReminderNotifier {
     /** Two short buzzes — long enough to notice, short enough not to be a siren. */
     private val VIBRATION_PATTERN = longArrayOf(0, 400, 200, 400)
 
+    /**
+     * How loudly a post is allowed to announce itself.
+     *
+     * The three cases are genuinely different events wearing the same
+     * notification, and conflating them is what made a *swipe* — a gesture the
+     * user makes to get rid of something — answer back with a full alert.
+     *
+     * - [FULL] the reminder arriving. Sound and a buzz; this is the moment the
+     *   app exists for.
+     * - [BUZZ_ONLY] the nag from Settings. A buzz, no sound: it repeats on an
+     *   interval, and a chime every few minutes is what makes people uninstall.
+     * - [SILENT] the same reminder being put back, or refreshed after an edit.
+     *   Nothing. It was already on screen; nothing happened that the user does
+     *   not already know about.
+     *
+     * Note the asymmetry in *who* does it. Sound is always Android's, from the
+     * channel, and can only be chosen per-post by choosing the channel.
+     *
+     * The buzz is split. [FULL] lets the **channel** vibrate, because that is
+     * played by the system as part of posting the notification: atomic with it,
+     * and immune to this process being frozen or killed the moment `onReceive`
+     * returns — which a waveform we start ourselves is not, and is the likeliest
+     * reason an arriving reminder was sometimes not felt with the screen off.
+     * [BUZZ_ONLY] has to do it itself, because a nag only ever *updates* a
+     * notification already on screen and `setOnlyAlertOnce` stops the channel
+     * re-alerting; that flag is also what keeps the nag silent, so it cannot go.
+     *
+     * The trade this makes: a channel vibration follows notification rules, so it
+     * is suppressed in full silent mode, where the app-driven one survived by
+     * declaring `USAGE_ALARM`. The nag still survives it. Reliability was judged
+     * worth more than ringing through silent mode on arrival.
+     */
+    enum class Alert(internal val selfBuzz: Boolean, internal val sounds: Boolean) {
+        FULL(selfBuzz = false, sounds = true),
+        BUZZ_ONLY(selfBuzz = true, sounds = false),
+        SILENT(selfBuzz = false, sounds = false),
+        ;
+
+        /**
+         * Which channel carries it. Only [FULL] gets the one with a sound, so
+         * everything after the reminder's first appearance is silent *by
+         * construction* rather than by relying on `setOnlyAlertOnce` — that flag
+         * only suppresses re-alerts of a notification still on screen, and a nag
+         * that somehow posted fresh would otherwise chime.
+         */
+        internal val channelId: String
+            get() = if (sounds) ReminderContract.CHANNEL_ID else ReminderContract.QUIET_CHANNEL_ID
+    }
+
     fun ensureChannel(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java)
-        // The pre-vibration channel; its settings can't be changed in place.
-        manager.deleteNotificationChannel(ReminderContract.LEGACY_CHANNEL_ID)
-        val channel = NotificationChannel(
+        // Older generations of this channel, whose alerting can't be changed in
+        // place. Dropping them is the migration — see CHANNEL_ID.
+        ReminderContract.LEGACY_CHANNEL_IDS.forEach(manager::deleteNotificationChannel)
+        val reminder = NotificationChannel(
             ReminderContract.CHANNEL_ID,
-            "Pesky Reminders",
+            "Reminders",
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
-            description = "Reminders you must snooze or complete"
-            // We buzz ourselves in post(), on every repost and every nag. If the
-            // channel also vibrated, the two would race and the platform would
-            // cut ours short ("cancelled_superseded" in dumpsys vibrator_manager).
-            enableVibration(false)
+            description = "A reminder coming due. Sounds and buzzes once, when it arrives."
+            // The channel buzzes for an arriving reminder, and post() no longer
+            // does. The system plays this as part of posting the notification, so
+            // it cannot be cut short by our process being frozen the moment the
+            // receiver returns. Nothing races it: only Alert.BUZZ_ONLY buzzes
+            // itself now, and that lands on the quiet channel, which does not.
+            enableVibration(true)
+            vibrationPattern = VIBRATION_PATTERN
         }
-        manager.createNotificationChannel(channel)
+        // Same in every respect except the sound, which is the one thing a
+        // notification cannot override per post — see QUIET_CHANNEL_ID. Keeping
+        // the importance identical is what stops a re-posted reminder looking or
+        // sorting differently from the one it replaces.
+        val quiet = NotificationChannel(
+            ReminderContract.QUIET_CHANNEL_ID,
+            "Repeat buzz and re-posts",
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            description =
+                "The same reminder repeating, or put back after you swipe it away. Never sounds."
+            enableVibration(false)
+            setSound(null, null)
+        }
+        manager.createNotificationChannel(reminder)
+        manager.createNotificationChannel(quiet)
     }
 
     /** Is this task's notification still sitting in the shade, being ignored? */
@@ -45,11 +113,17 @@ object ReminderNotifier {
             .any { it.id == ReminderContract.notificationId(taskId) }
 
     /**
-     * Buzz the device directly — the single source of vibration for this app.
+     * Buzz the device directly — now only for the **nag**.
      *
-     * Re-posting a notification that is already showing does not reliably
-     * re-alert, and cancel-then-post would make it flicker and jump the shade.
-     * Driving the vibrator ourselves keeps every nag identical.
+     * An arriving reminder is buzzed by its channel instead, which is more
+     * reliable because the system plays it as part of posting the notification.
+     * A nag cannot use that route: it only ever updates a notification already on
+     * screen, and `setOnlyAlertOnce` — which is what keeps the nag from chiming —
+     * stops the channel re-alerting. Cancel-then-post would re-alert, but it makes
+     * the notification flicker and jump the shade.
+     *
+     * The one thing this route still does better: `USAGE_ALARM` below survives
+     * silent mode, which a channel vibration does not.
      */
     fun vibrate(context: Context) {
         val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -85,7 +159,7 @@ object ReminderNotifier {
         }
     }
 
-    fun post(context: Context, task: Task) {
+    fun post(context: Context, task: Task, alert: Alert = Alert.FULL) {
         ensureChannel(context)
         val manager = context.getSystemService(NotificationManager::class.java)
         val now = System.currentTimeMillis()
@@ -95,7 +169,7 @@ object ReminderNotifier {
         val due = TaskTime.formatFull(task.dueMillis, now, DateFormat.is24HourFormat(context))
 
         val open = openSheetIntent(context, task.id)
-        val notification = NotificationCompat.Builder(context, ReminderContract.CHANNEL_ID)
+        val notification = NotificationCompat.Builder(context, alert.channelId)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(task.name)
             // Always the present tense, late or not: the notification is here
@@ -108,8 +182,17 @@ object ReminderNotifier {
             .setOngoing(true)
             .setAutoCancel(false)
             // The nag drives its own vibration, so silence Android's re-alert
-            // on update — otherwise a refresh buzzes twice.
+            // on update — otherwise a refresh buzzes twice. This is also what
+            // keeps the nag's *sound* off: a nag only ever updates a
+            // notification already on screen, and this flag is what Android
+            // checks before re-alerting one. Do not turn it off to "make the
+            // nag repeat" — the repeat is ours, and losing this would put the
+            // notification chime on every interval.
             .setOnlyAlertOnce(true)
+            // No setSilent() here, deliberately: it silences by moving the
+            // notification into a group keyed "silent", which drops it out of the
+            // app's stack in the shade. The quiet channel does the same job with
+            // no side effect — see ReminderContract.QUIET_CHANNEL_ID.
             // A tap on the body opens the same sheet the Snooze action does.
             // autoCancel stays off: tapping is not one of the two sanctioned
             // ways to clear a notification you are not allowed to dismiss.
@@ -125,7 +208,8 @@ object ReminderNotifier {
             .build()
 
         manager.notify(ReminderContract.notificationId(task.id), notification)
-        vibrate(context)
+        // Only the nag. An arriving reminder is buzzed by its channel — see Alert.
+        if (alert.selfBuzz) vibrate(context)
     }
 
     /**

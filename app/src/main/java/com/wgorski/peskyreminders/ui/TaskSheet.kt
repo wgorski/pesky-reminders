@@ -20,20 +20,25 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.wgorski.peskyreminders.Repeat
@@ -146,7 +151,8 @@ private fun TaskSheet(
             )
         },
     ) {
-        NameField(name) { name = it }
+        // A new pester opens with the keyboard already up; an edit does not.
+        NameField(name, autoFocus = existing == null) { name = it }
 
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("When?", style = PeskyType.FieldLabel)
@@ -179,13 +185,31 @@ private fun TaskSheet(
 }
 
 /**
- * Deliberately does NOT take focus on open, unlike the design's `autoFocus`:
- * on a phone that would throw the keyboard up over the time pickers before the
- * user has decided whether they even want to type. They tap the field first.
+ * Takes focus on open when [autoFocus] is set, which is the add path only.
+ *
+ * That is a reversal: it used to refuse focus everywhere, because throwing the
+ * keyboard up covers the time pickers before the user has decided whether they
+ * even want to type. Opening a *new* pester, though, they always do — the name
+ * is the one thing the sheet cannot supply a default for, and it is the only
+ * thing Save waits on. Editing keeps the old behaviour, because that is usually
+ * a trip to change the time and the pickers should be the thing on screen.
+ *
+ * The keyboard covering the pickers is not hypothetical, it just costs less than
+ * the tap it saves: the sheet is `ime`-inset, so its body scrolls from the first
+ * frame and the footer stays pinned. Verified at font scale 1.3, where the
+ * margin is thinnest.
+ *
+ * Capitalization is a hint to the IME, not a transform — it opens in shift state
+ * and does not fight someone who means to type lowercase.
  */
 @Composable
-private fun NameField(value: String, onValue: (String) -> Unit) {
+private fun NameField(value: String, autoFocus: Boolean, onValue: (String) -> Unit) {
     val keyboard = LocalSoftwareKeyboardController.current
+    val focusRequester = remember { FocusRequester() }
+
+    if (autoFocus) {
+        LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("What should I nag you about?", style = PeskyType.FieldLabel)
@@ -195,11 +219,15 @@ private fun NameField(value: String, onValue: (String) -> Unit) {
             singleLine = true,
             textStyle = PeskyType.Input,
             cursorBrush = SolidColor(PeskyColors.Accent),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Sentences,
+                imeAction = ImeAction.Done,
+            ),
             keyboardActions = KeyboardActions(onDone = { keyboard?.hide() }),
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("name-field")
+                .focusRequester(focusRequester)
                 .clip(R12)
                 .background(PeskyColors.Field)
                 .border(1.dp, PeskyColors.FieldBorder, R12)

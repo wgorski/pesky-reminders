@@ -3,12 +3,30 @@ package com.wgorski.peskyreminders
 /** Shared constants and pure scheduling math for the reminder model. */
 object ReminderContract {
     /**
-     * Bumped from "pesky_reminders" when vibration was added: a channel's
-     * settings are frozen at creation, so an existing install would never have
-     * started buzzing. [ReminderNotifier] deletes the old one.
+     * A channel's settings are **frozen at creation**, so every change to how it
+     * alerts needs a new id or no existing install ever picks it up.
+     *
+     * - `pesky_reminders` → `_v2` when vibration was added.
+     * - `_v2` → `_v3` when the *channel* took over the arrival buzz from the app.
+     *
+     * [ReminderNotifier] deletes every older id, so the list is the migration.
      */
-    const val CHANNEL_ID = "pesky_reminders_v2"
-    const val LEGACY_CHANNEL_ID = "pesky_reminders"
+    const val CHANNEL_ID = "pesky_reminders_v3"
+    val LEGACY_CHANNEL_IDS = listOf("pesky_reminders", "pesky_reminders_v2")
+
+    /**
+     * The sound-free twin of [CHANNEL_ID], for every post after the first.
+     *
+     * A channel is the only place a notification's sound can be turned off on
+     * API 26+, and it cannot be overridden per post. The alternative —
+     * `NotificationCompat.setSilent(true)` — works by moving the notification
+     * into a group keyed "silent", which drops it out of the app's own group in
+     * the shade; verified in dumpsys as `groupKey=silent` against the normal
+     * `ranker_group`. A swiped reminder would visibly jump out of the stack. A
+     * second channel costs one extra row in the system notification settings and
+     * changes nothing else.
+     */
+    const val QUIET_CHANNEL_ID = "pesky_reminders_quiet"
 
     const val ACTION_FIRE = "com.wgorski.peskyreminders.FIRE"
     const val ACTION_DONE = "com.wgorski.peskyreminders.DONE"
