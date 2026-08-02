@@ -159,6 +159,38 @@ cp app/build/outputs/apk/release/pesky-reminders-$V.apk dist/pesky-reminders.apk
   reporting it done; the debug build passing is not evidence about the one being
   staged. Hash the staged copies against the build output if anything moved them.
 
+## The preview build — try a release candidate next to the real app
+
+`assemblePreview` produces a **parallel-installable** dress rehearsal for the Play
+build: `com.wgorski.peskyreminders.preview`, a green launcher icon, its own task
+list. Use it to test on a real phone without risking the list you rely on.
+
+```bash
+# Build, stage in dist/preview/, and serve it on the LAN (port 9998).
+.claude/skills/preview/serve-preview.sh
+```
+
+Everything about it is in the `preview` skill (`.claude/skills/preview/`). Four
+facts worth having here:
+
+- It is `initWith(release)`, **not** debug — the point is to exercise what ships,
+  so it inherits release's minification and lack of `debuggable`.
+- `applicationIdSuffix = ".preview"` is what makes it a separate app. The
+  **namespace is untouched**, so `R`, `BuildConfig` and every
+  `Intent(context, ReminderReceiver::class.java)` still resolve.
+- It is **always debug-signed**, even when the upload key is configured. Signing a
+  test build for Play buys nothing, and an upload-signed preview could not later
+  be replaced by a debug-signed one without an uninstall.
+- **Don't bump the version to cut a preview.** It must carry the version you are
+  about to ship, or you are testing something else; `versionNameSuffix` is what
+  distinguishes the artifact.
+
+The green icon and label come from `app/src/preview/res` overriding exactly two
+resources — `ic_launcher_background` and `app_name`. That is why the label is a
+string resource rather than a literal in the manifest. The in-app accent stays
+crimson deliberately: the preview should look and behave like the real build
+everywhere except the launcher.
+
 ## When I ask you to "expose the apk locally"
 
 Run these steps (produces a debug-signed, installable **release** APK and serves it

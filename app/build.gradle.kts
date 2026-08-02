@@ -62,6 +62,34 @@ android {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName(if (hasUploadKey) "upload" else "debug")
         }
+
+        // A dress rehearsal for the Play build that can sit on the phone next to
+        // the real app.
+        //
+        // `initWith(release)` rather than `debug` on purpose: the point is to test
+        // what actually ships, so it inherits release's minification, its lack of
+        // `debuggable`, and no test manifest. The three things it changes are the
+        // three that stop it colliding with the real install:
+        create("preview") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+
+            // A different package, so Android treats it as a different app: its
+            // own launcher entry, its own task list, its own notification
+            // channels. Nothing leaks between the two, which is the point — you
+            // can try a release candidate without risking the list you rely on.
+            //
+            // The *namespace* is untouched, so R, BuildConfig and every
+            // `Intent(context, ReminderReceiver::class.java)` still resolve.
+            applicationIdSuffix = ".preview"
+            versionNameSuffix = "-preview"
+
+            // Always the debug key, even when the upload key is configured.
+            // Signing a test build for Play buys nothing, and an upload-signed
+            // preview could not later be replaced by a debug-signed one without an
+            // uninstall — see the note on the two channels above.
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
 
     // Name the release artifact after the version so the file in
@@ -73,7 +101,9 @@ android {
     // both but also rename app-debug.apk, which the documented install and test
     // commands hardcode.
     applicationVariants.all {
-        if (name == "release") {
+        // versionName already carries the build type's suffix, so `preview` names
+        // itself pesky-reminders-0.19.0-preview.apk without a second rule.
+        if (name == "release" || name == "preview") {
             outputs.all {
                 (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl)
                     .outputFileName = "pesky-reminders-$versionName.apk"
