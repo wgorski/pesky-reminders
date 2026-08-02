@@ -234,6 +234,24 @@ descriptions, the declarations, the Data safety answers, and the
 policy; the HTML is self-contained so it can go on any host. Store graphics
 (512 icon, 1024×500 feature, four 9:16 screenshots) sit beside them.
 
+### Writing the "What's new" notes
+
+Release notes in `docs/play/release-notes.md` say **what is in the release**, in
+the app's own voice, and nothing else. Two rules, both of which I have had to
+ask for:
+
+- **Never mention which track it is going to, or what stage of testing it is
+  at.** "Second release", "goes to closed testing", a versionCode — that is
+  Console state, not news. It is also stale the moment the release is promoted,
+  and these notes carry over to production verbatim.
+- **Never list what was left out.** No known bugs, no "not yet included", no
+  deferred features, no note about which internal work was omitted as invisible.
+  It reads as an apology and it advertises gaps nobody asked about.
+
+What is left in: the user-visible changes, described as changes to the app rather
+than to the code. Keep the character count line above each block — the field caps
+at 500 per language and the same text runs ~10% longer in Polish.
+
 ```bash
 # The Play artifact. Signed with the upload key, version-named.
 ./gradlew :app:stageReleaseBundle
