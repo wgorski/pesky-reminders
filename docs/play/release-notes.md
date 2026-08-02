@@ -51,6 +51,25 @@ only, or localise the app first. English-only is the honest choice today.
 
 ---
 
+## 0.19.0 — en-GB
+
+439 of 500 characters. Second release; goes to the **closed testing** track,
+which 0.16.0 (versionCode 22) is already on. This is versionCode 25.
+
+```
+Sheets close with a flick now — take hold of the bar at the top of any sheet and throw it downwards.
+
+Adding a pester opens with the keyboard ready and the first letter capitalised. Tap anywhere else and it gets out of the way.
+
+Swiping a reminder away no longer answers back with a sound and a buzz; it just comes back, which was always the point. The repeat buzz has lost its chime too — the sound belongs to the reminder arriving, once.
+```
+
+Deliberately left out: the drag-handle hit-testing fix, the notification channel
+migration, the `preview` build type. Real work, but nothing a user would notice —
+and "describe what changed for the user" is the rule below.
+
+---
+
 ## Format for later releases
 
 Describe what changed for the user, not what changed in the code. The list rows
