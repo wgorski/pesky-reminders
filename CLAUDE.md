@@ -174,7 +174,12 @@ Everything about it is in the `preview` skill (`.claude/skills/preview/`). Four
 facts worth having here:
 
 - It is `initWith(release)`, **not** debug — the point is to exercise what ships,
-  so it inherits release's minification and lack of `debuggable`.
+  so it inherits release's config: not `debuggable`, no test manifest, release
+  resource processing. **Minification is not part of that**, because release sets
+  `isMinifyEnabled = false` — so a preview pass proves nothing about R8, and
+  saying it does overstates what was verified. `initWith` is still the right shape:
+  turn minification on for release and the preview picks it up for free, which is
+  exactly when you would want a dress rehearsal.
 - `applicationIdSuffix = ".preview"` is what makes it a separate app. The
   **namespace is untouched**, so `R`, `BuildConfig` and every
   `Intent(context, ReminderReceiver::class.java)` still resolve.

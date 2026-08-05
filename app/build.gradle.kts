@@ -67,9 +67,13 @@ android {
         // the real app.
         //
         // `initWith(release)` rather than `debug` on purpose: the point is to test
-        // what actually ships, so it inherits release's minification, its lack of
-        // `debuggable`, and no test manifest. The three things it changes are the
-        // three that stop it colliding with the real install:
+        // what actually ships, so it inherits release's config — not `debuggable`,
+        // no test manifest, release resource processing. Note that does NOT include
+        // minification, since release sets isMinifyEnabled = false above; a preview
+        // pass is not evidence about R8. Turn minification on there and the preview
+        // inherits it, which is the reason to keep initWith rather than restate the
+        // settings. The three things it changes are the three that stop it
+        // colliding with the real install:
         create("preview") {
             initWith(getByName("release"))
             matchingFallbacks += listOf("release")

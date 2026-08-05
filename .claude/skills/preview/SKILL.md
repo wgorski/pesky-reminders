@@ -56,7 +56,15 @@ matter; drop any one and it stops being a *parallel* install:
 | `signingConfig` | always **debug** | it must sideload, and must be replaceable in place by the next preview |
 
 It is `initWith(release)`, **not** debug: the point is to exercise what actually
-ships, so it inherits release's minification and its lack of `debuggable`.
+ships, so it inherits release's configuration — not `debuggable`, no test
+manifest, release resource processing.
+
+**It is not minified, so don't claim a preview pass exercises R8.** Release sets
+`isMinifyEnabled = false`, and the preview inherits that along with everything
+else. `initWith` is still the right shape — switch minification on for release and
+the preview picks it up automatically, which is precisely the change that would
+deserve a dress rehearsal — but today there is no R8 in either build, and
+reporting a preview as proof of minified behaviour overstates it.
 
 The green icon and the "Pesky preview" label come from `app/src/preview/res`,
 which overrides exactly two resources — `ic_launcher_background` and
