@@ -101,15 +101,17 @@ fun ReminderSheet(
                 // PeskyWheel's scroll-into-view effect returns early on a
                 // negative index, so this also leaves the list where it opened.
                 selectedIndex = -1,
-                label = { SnoozeOptions.label(SnoozeOptions.WHEEL[it]) },
-                // With the footer readout gone this is the only place a landing
-                // time appears, so every row carries one — not just the long
-                // durations that are hard to picture.
-                aside = { index ->
-                    "(" + TaskTime.formatCompact(
+                // The time it lands on leads. With the footer readout gone this is
+                // the only place one appears, and it is the thing being chosen —
+                // "17:50" is the answer, "5 min" is only how it was arrived at. So
+                // every row carries a time, not just the long durations that are
+                // hard to picture, and the duration becomes the dimmer aside.
+                label = { index ->
+                    TaskTime.formatCompact(
                         nowMillis + SnoozeOptions.WHEEL[index] * 60_000L, nowMillis, use24h,
-                    ) + ")"
+                    )
                 },
+                aside = { "(" + SnoozeOptions.label(SnoozeOptions.WHEEL[it]) + ")" },
                 onPick = { onSnooze(SnoozeOptions.WHEEL[it]) },
                 modifier = Modifier.fillMaxWidth(),
             )

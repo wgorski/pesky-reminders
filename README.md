@@ -4,15 +4,15 @@ A reminder app for things you keep not doing.
 
 Every other app puts a notification on your lock screen, you flick it away without
 reading it, and the thing stays undone. Pesky won't let you. Its notification cannot
-be swiped away, cannot be cleared, and comes straight back if you try. The only way
-out is to open it — a tap on the body or on **Snooze** both raise the same sheet —
-and from there either **snooze** it or mark it **Done**.
+be swiped away, cannot be cleared, and comes straight back if you try. The only ways
+out are its own two buttons — **Snooze 15 min** and **Done**, one tap each — or the
+sheet a tap on its body opens, where every other snooze lives.
 
 <img src="docs/screenshots/task-list.png" width="300" alt="The Pesky task list, banded by when things are due">
 
 ## When one goes off
 
-<img src="docs/screenshots/notification.png" width="440" alt="A Pesky notification with Snooze and Done actions">
+<img src="docs/screenshots/notification.png" width="440" alt="A Pesky notification with Snooze 15 min and Done actions">
 
 It arrives like any other notification — and then it stays.
 
@@ -24,9 +24,12 @@ It arrives like any other notification — and then it stays.
   with it. (You can change the interval, or switch the nagging off — see Settings.)
   It buzzes, it doesn't chime: the sound belongs to the reminder *arriving*, once.
   A notification tone every five minutes is how an app gets uninstalled.
-- **Tap the body, or Snooze** — both open the same sheet, with every way out in one
-  place. The sheet floats over whatever you were doing rather than opening the app,
-  and once you've chosen it gets out of the way and puts you back there.
+- **Snooze 15 min** does exactly that, on one tap, and tells you where it landed. It
+  is the answer often enough that stopping to ask which duration was the slower path,
+  and a quarter of an hour is the one that is hardest to regret.
+- **Tap the body** for any other snooze. That opens the sheet, which has the whole
+  ladder — out to three days — and floats over whatever you were doing rather than
+  opening the app; once you've chosen it gets out of the way and puts you back there.
 
 The wording stays in the present tense — *"Is due Today, 08:00"* — however late it
 is. It's on your screen because the thing still wants doing.
@@ -43,8 +46,9 @@ evening. It's for the intent a duration is clumsy at: not "in three hours" but
 
 Everything else is in the wheel underneath, starting at 5 minutes out and running to
 three days, coarsening as it goes (quarter-hours, then half-hours, then hours, then
-six-hour jumps) — and *every* row spells out the clock time it lands on, not just the
-long ones, so "3h" reads as the 7:15 it actually means.
+six-hour jumps). Every row **leads with the clock time it lands on** — *17:50 (5 min)*,
+*19:15 (3h)* — because the time is the thing you're actually choosing; the duration
+that got you there is the note beside it.
 
 There's no confirm button anywhere in the sheet: whichever chip or wheel row you tap is
 the choice, committed the instant you tap it. The *durations* count from **now**, never

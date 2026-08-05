@@ -128,38 +128,40 @@ class ReminderSheetTest {
         compose.onNodeWithTag("back-at").assertDoesNotExist()
     }
 
-    // ---- the clock time beside every duration -------------------------------
+    // ---- the clock time leads, the duration is the note ---------------------
 
     /**
      * The footer readout is gone, so the wheel is the only place a landing time
-     * appears. Short durations used to be left to speak for themselves.
+     * appears — and it is what the row is *for*, so it leads. The duration that
+     * produced it is the parenthesised aside, which is the way round these two
+     * used to be.
      */
     @Test fun even_the_shortest_rung_shows_where_it_lands() {
         show()
         scrollToWheel(5)
-        compose.onNodeWithText("5 min").assertExists()
-        compose.onNodeWithText("(2:25 PM)").assertExists()
+        compose.onNodeWithText("2:25 PM").assertExists()
+        compose.onNodeWithText("(5 min)").assertExists()
     }
 
     @Test fun a_quarter_hour_shows_where_it_lands() {
         show()
         scrollToWheel(15)
-        compose.onNodeWithText("15 min").assertExists()
-        compose.onNodeWithText("(2:35 PM)").assertExists()
+        compose.onNodeWithText("2:35 PM").assertExists()
+        compose.onNodeWithText("(15 min)").assertExists()
     }
 
     @Test fun a_long_duration_shows_where_it_lands() {
         show()
         scrollToWheel(240)
-        compose.onNodeWithText("4h").assertExists()
-        compose.onNodeWithText("(6:20 PM)").assertExists()
+        compose.onNodeWithText("6:20 PM").assertExists()
+        compose.onNodeWithText("(4h)").assertExists()
     }
 
     @Test fun a_duration_landing_on_another_day_names_the_day() {
         show()
         scrollToWheel(30 * 60)
-        compose.onNodeWithText("30h").assertExists()
-        compose.onNodeWithText("(Tomorrow 8:20 PM)").assertExists()
+        compose.onNodeWithText("Tomorrow 8:20 PM").assertExists()
+        compose.onNodeWithText("(30h)").assertExists()
     }
 
     // ---- committing ---------------------------------------------------------

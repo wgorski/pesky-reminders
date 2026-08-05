@@ -30,6 +30,14 @@ object ReminderContract {
 
     const val ACTION_FIRE = "com.wgorski.peskyreminders.FIRE"
     const val ACTION_DONE = "com.wgorski.peskyreminders.DONE"
+
+    /**
+     * The notification's one-tap snooze, for [SnoozeOptions.QUICK_MINUTES].
+     *
+     * A broadcast like [ACTION_DONE], not an activity, because it shows nothing —
+     * the sheet of durations is a separate route and still has to be an activity.
+     */
+    const val ACTION_SNOOZE = "com.wgorski.peskyreminders.SNOOZE"
     const val ACTION_REPOST = "com.wgorski.peskyreminders.REPOST"
     const val ACTION_NAG = "com.wgorski.peskyreminders.NAG"
 
@@ -55,6 +63,16 @@ object ReminderContract {
     const val SLOT_SNOOZE = 3
     const val SLOT_DONE = 4
     const val SLOT_NAG = 5
+
+    /**
+     * The tap on the notification's body, which opens the snooze sheet.
+     *
+     * It had no slot of its own while it *was* [SLOT_SNOOZE]'s PendingIntent —
+     * one intent served the body and the Snooze action both. The action is a
+     * broadcast now, so they are different intents and need different request
+     * codes, or [requestCode] collapses them onto one another.
+     */
+    const val SLOT_OPEN = 6
 
     /**
      * PendingIntent request codes must differ per task *and* per action, or the

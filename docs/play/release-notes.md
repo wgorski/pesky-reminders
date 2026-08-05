@@ -65,6 +65,18 @@ Swiping a reminder away no longer answers back with a sound and a buzz; it just 
 
 ---
 
+## 0.20.0 — en-GB
+
+351 of 500 characters.
+
+```
+The notification's Snooze button now says what it does, and does it in one tap: Snooze 15 min clears the reminder, pushes it a quarter of an hour and tells you where it landed.
+
+Every other snooze is still a tap on the notification itself. Those rows now lead with the time they land on — 17:50 (5 min) — because the time is the thing you are picking.
+```
+
+---
+
 ## Format for later releases
 
 Describe what changed for the user, not what changed in the code. The list rows

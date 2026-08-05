@@ -74,6 +74,25 @@ class SnoozeOptionsTest {
         assertEquals(listOf(15, 30, 60, 180), SnoozeOptions.PRESETS)
     }
 
+    /**
+     * The one duration the app commits to without asking — the notification's
+     * quick action. It must also be a chip, or the sheet could not offer the same
+     * choice the button makes silently.
+     */
+    @Test fun the_quick_snooze_is_the_shortest_chip() {
+        assertEquals(15, SnoozeOptions.QUICK_MINUTES)
+        assertEquals(SnoozeOptions.PRESETS.first(), SnoozeOptions.QUICK_MINUTES)
+    }
+
+    /**
+     * This *is* the notification button's title, which is built as
+     * `"Snooze " + label(QUICK_MINUTES)` rather than written out. Reword [label]
+     * and the notification reworded itself, so pin the string it produces.
+     */
+    @Test fun the_quick_snooze_label_is_what_the_notification_says() {
+        assertEquals("15 min", SnoozeOptions.label(SnoozeOptions.QUICK_MINUTES))
+    }
+
     /** It lost its chip when the presets became 15/30/1hr/3hr. */
     @Test fun five_minutes_is_reachable_on_the_wheel_but_is_no_longer_a_chip() {
         assertTrue(SnoozeOptions.WHEEL.contains(5))

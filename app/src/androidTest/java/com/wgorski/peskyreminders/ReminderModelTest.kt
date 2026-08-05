@@ -80,7 +80,13 @@ class ReminderModelTest {
             "ongoing flag must be set (blocks clear-all + swipe-while-locked)",
             (n!!.notification.flags and Notification.FLAG_ONGOING_EVENT) != 0
         )
-        assertEquals("Snooze + Done", 2, n.notification.actions.size)
+        assertEquals("Snooze 15 min + Done", 2, n.notification.actions.size)
+        // The button names its duration because it commits to it without asking.
+        assertEquals(
+            "the snooze action must say how long it snoozes for",
+            "Snooze 15 min",
+            n.notification.actions[0].title.toString(),
+        )
     }
 
     private fun postedText(): String? =
@@ -373,20 +379,62 @@ class ReminderModelTest {
         assertEquals("and slotMillis reads the anchor", slot, task.slotMillis)
     }
 
+    private fun snoozeAction(n: Notification) =
+        n.actions.first { it.title.startsWith("Snooze") }
+
     /**
-     * The Snooze action must open the picker activity itself. Routing it through
-     * a receiver that then starts an activity is a notification trampoline, which
-     * Android 12+ blocks outright — the tap would do nothing at all.
+     * The Snooze action is a broadcast *because it shows nothing* — it moves the
+     * task and posts a toast, exactly as Done does.
+     *
+     * It used to be an activity, when the action opened the sheet: routing
+     * something that shows UI through a receiver is a notification trampoline,
+     * which Android 12+ blocks outright. That rule has not changed — it now
+     * governs the body tap below, which is the route that still shows the sheet.
      */
-    @Test fun the_snooze_action_opens_an_activity_not_a_broadcast() {
+    @Test fun the_snooze_action_is_a_broadcast_because_it_shows_nothing() {
         deliver(ReminderContract.ACTION_FIRE)
         val n = active()
         assertNotNull("precondition: posted", n)
-        val snooze = n!!.notification.actions.first { it.title == "Snooze" }
-        assertTrue("Snooze must be an activity PendingIntent", snooze.actionIntent.isActivity)
+        val snooze = snoozeAction(n!!.notification)
+        assertTrue("Snooze must be a broadcast, not an activity", snooze.actionIntent.isBroadcast)
 
         val done = n.notification.actions.first { it.title == "Done" }
-        assertTrue("Done stays a broadcast — it shows no UI", done.actionIntent.isBroadcast)
+        assertTrue("Done stays a broadcast — it shows no UI either", done.actionIntent.isBroadcast)
+
+        // isBroadcast only says it is *a* broadcast, not which one. FLAG_NO_CREATE
+        // makes getBroadcast a pure lookup: a non-null result means a
+        // PendingIntent with this request code, targeting ReminderReceiver and
+        // carrying ACTION_SNOOZE, already exists. (Matching ignores extras, so
+        // the task id is not part of what this proves.)
+        val resolved = PendingIntent.getBroadcast(
+            context,
+            ReminderContract.requestCode(taskId, ReminderContract.SLOT_SNOOZE),
+            Intent(context, ReminderReceiver::class.java).apply {
+                action = ReminderContract.ACTION_SNOOZE
+            },
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+        )
+        assertNotNull("the Snooze action must carry ACTION_SNOOZE", resolved)
+    }
+
+    /**
+     * The whole point of the label: the action commits on the tap, so the task has
+     * to move, and by the amount the button names rather than the API's own
+     * five-minute default.
+     */
+    @Test fun the_snooze_action_moves_the_task_fifteen_minutes_out() {
+        deliver(ReminderContract.ACTION_FIRE)
+        assertNotNull("precondition: posted", active())
+
+        deliver(ReminderContract.ACTION_SNOOZE)
+
+        assertNull("snoozing clears the notification", active())
+        // The nag is cancelled with it, so the task's own alarm is the only one left.
+        val minutes = minutesUntilNextAlarm()
+        assertTrue("back in ~15 min (was $minutes min)", minutes in 14.0..15.5)
+        val target = System.currentTimeMillis() + SnoozeOptions.QUICK_MINUTES * 60_000L
+        val outBy = Math.abs(stored().dueMillis - target)
+        assertTrue("the task's own due time moves too (out by $outBy ms)", outBy < 2_000L)
     }
 
     /**
@@ -396,7 +444,7 @@ class ReminderModelTest {
      * It must not auto-cancel: tapping is not one of the two sanctioned ways to
      * clear a notification you are not allowed to dismiss.
      */
-    @Test fun tapping_the_notification_body_opens_the_same_sheet_as_snooze() {
+    @Test fun tapping_the_notification_body_opens_the_snooze_sheet() {
         deliver(ReminderContract.ACTION_FIRE)
         val n = active()
         assertNotNull("precondition: posted", n)
@@ -405,24 +453,28 @@ class ReminderModelTest {
         assertNotNull("the body must be tappable", open)
         assertTrue("must be an activity; a trampoline is blocked on 12+", open.isActivity)
 
-        val snooze = n.notification.actions.first { it.title == "Snooze" }
-        assertEquals("the body and Snooze open the same sheet", snooze.actionIntent, open)
+        // The body is now the *only* route to the sheet — the action beside it
+        // snoozes 15 minutes instead of asking — so the two must not be the same
+        // PendingIntent, and their request codes have to differ or they collapse.
+        assertFalse(
+            "the body and the Snooze action are different intents now",
+            open == snoozeAction(n.notification).actionIntent,
+        )
 
-        // Equality above only proves the body and Snooze share ONE PendingIntent —
-        // it says nothing about which activity that PendingIntent targets. Re-point
-        // both at the wrong component and this test would still be green without
-        // this check. FLAG_NO_CREATE makes getActivity() a pure lookup: a non-null
-        // result means a PendingIntent matching this exact request code and an
-        // Intent targeting ReminderActivity already exists.
+        // isActivity says nothing about which activity. FLAG_NO_CREATE makes
+        // getActivity() a pure lookup: a non-null result means a PendingIntent
+        // with this exact request code, targeting ReminderActivity, already
+        // exists. Re-point the body at the wrong component and the assertions
+        // above would all still be green.
         val expectedTarget = Intent(context, ReminderActivity::class.java)
         val resolved = PendingIntent.getActivity(
             context,
-            ReminderContract.requestCode(taskId, ReminderContract.SLOT_SNOOZE),
+            ReminderContract.requestCode(taskId, ReminderContract.SLOT_OPEN),
             expectedTarget,
             PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
         )
         assertNotNull(
-            "the body/Snooze PendingIntent must target ReminderActivity",
+            "the body's PendingIntent must target ReminderActivity on SLOT_OPEN",
             resolved,
         )
 

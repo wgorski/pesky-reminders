@@ -193,14 +193,27 @@ object ReminderNotifier {
             // notification into a group keyed "silent", which drops it out of the
             // app's stack in the shade. The quiet channel does the same job with
             // no side effect — see ReminderContract.QUIET_CHANNEL_ID.
-            // A tap on the body opens the same sheet the Snooze action does.
+            // A tap on the body opens the snooze sheet — every rung the action
+            // beside it no longer stops to ask about.
             // autoCancel stays off: tapping is not one of the two sanctioned
             // ways to clear a notification you are not allowed to dismiss.
             .setContentIntent(open)
             .setDeleteIntent(
                 broadcast(context, ReminderContract.ACTION_REPOST, task.id, ReminderContract.SLOT_REPOST)
             )
-            .addAction(0, "Snooze", open)
+            // Snoozes on the tap rather than opening the sheet, which is what
+            // lets it say how long. The title is built from SnoozeOptions so it
+            // cannot come to disagree with the chip offering the same duration.
+            .addAction(
+                0,
+                "Snooze ${SnoozeOptions.label(SnoozeOptions.QUICK_MINUTES)}",
+                broadcast(
+                    context,
+                    ReminderContract.ACTION_SNOOZE,
+                    task.id,
+                    ReminderContract.SLOT_SNOOZE,
+                ),
+            )
             .addAction(
                 0, "Done",
                 broadcast(context, ReminderContract.ACTION_DONE, task.id, ReminderContract.SLOT_DONE)
@@ -224,12 +237,16 @@ object ReminderNotifier {
     /**
      * Opens the reminder's action sheet — Done, the snooze chips and the wheel.
      *
-     * Serves both the body tap and the Snooze action: same intent, same request
-     * code, so it is literally the same PendingIntent and needs no slot of its
-     * own in [ReminderContract].
+     * The **body tap**, and nothing else. It used to be the Snooze action's
+     * PendingIntent too — one intent serving both, needing no slot of its own —
+     * but that action commits to [SnoozeOptions.QUICK_MINUTES] on the tap now and
+     * is a broadcast, so the two are different intents and need different request
+     * codes. Hence [ReminderContract.SLOT_OPEN].
      *
-     * An activity, not a broadcast: Android 12+ blocks a notification action
-     * from bouncing through a receiver to show UI.
+     * An activity, not a broadcast: Android 12+ blocks a notification action from
+     * bouncing through a receiver to show UI. That rule is why the *sheet* cannot
+     * move to [ReminderReceiver]; the one-tap snooze could, because it shows
+     * nothing.
      */
     private fun openSheetIntent(context: Context, taskId: Int): PendingIntent {
         val intent = Intent(context, ReminderActivity::class.java).apply {
@@ -238,7 +255,7 @@ object ReminderNotifier {
         }
         return PendingIntent.getActivity(
             context,
-            ReminderContract.requestCode(taskId, ReminderContract.SLOT_SNOOZE),
+            ReminderContract.requestCode(taskId, ReminderContract.SLOT_OPEN),
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )

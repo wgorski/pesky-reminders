@@ -87,7 +87,7 @@ adb shell am start -n com.wgorski.peskyreminders/.MainActivity
 
 Two tiers, and they cover different things.
 
-**Deterministic (JVM, ~9s, no device)** — `app/src/test/`, 224 tests. Robolectric hosts
+**Deterministic (JVM, ~9s, no device)** — `app/src/test/`, 227 tests. Robolectric hosts
 the real composables, and every screen takes `nowMillis` as a parameter instead of
 reading the clock, so each expected label is a fixed string. `TaskTimeTest` covers the
 date maths; `TaskListScreenTest`, `AddTaskSheetTest` and `EditTaskSheetTest` drive
@@ -100,7 +100,7 @@ every control in the UI. Tests pin `TimeZone` to UTC so they pass on any machine
 - They also gate `git push` via `.githooks/pre-push`. Enable once per clone:
   `git config core.hooksPath .githooks`. Bypass with `git push --no-verify`.
 
-**Device (emulator)** — `app/src/androidTest/`, 65 tests. `ReminderModelTest` is the
+**Device (emulator)** — `app/src/androidTest/`, 68 tests. `ReminderModelTest` is the
 real proof of the notification model: it fires the notification's own delete-intent,
 which is exactly what the OS sends on a swipe. Note it calls `TaskStore.clear()`, so
 running it **wipes the task list on the device**.
@@ -286,7 +286,7 @@ app/src/main/java/com/wgorski/peskyreminders/
   Reminders.kt          # facade where the store and the alarm/notification plumbing meet
   ReminderContract.kt   # constants, per-task notification ids and request codes
   ReminderScheduler.kt  # AlarmManager.setAlarmClock wrapper (schedule/cancel per task)
-  ReminderReceiver.kt   # BroadcastReceiver: FIRE / REPOST / DONE / NAG
+  ReminderReceiver.kt   # BroadcastReceiver: FIRE / REPOST / DONE / SNOOZE / NAG
   BootReceiver.kt       # re-arms alarms after a reboot or an app update
   ReminderActivity.kt   # standalone translucent host for the action sheet (own task)
   SnoozeOptions.kt      # PURE snooze durations + labels — unit-tested
@@ -572,15 +572,22 @@ does NOT fire the delete-intent, so those clear the notification without re-post
 - **Snooze counts from the clock, never from the task's due time.** `ReminderSheet`
   deliberately has no "start from" parameter: the preview and `Reminders.snooze` must
   read the same clock, or the readout promises a time the button does not deliver.
-  That bug has already happened once. It is reachable only from the notification —
-  its Snooze action, or a tap on its body — because the task list picks absolute
-  times instead.
+  That bug has already happened once. The sheet is reachable only by tapping the
+  notification's **body** — its Snooze action commits to 15 minutes without opening
+  anything — because the task list picks absolute times instead.
 - **The reminder sheet has no confirm step.** Every chip and every wheel row
   commits on the tap, which is why nothing in it holds a selection: the chips
   have no chosen state and the wheel is passed `selectedIndex = -1`. It is also
   why there is no "back at …" footer — with no held choice there is nothing to
   preview, so each wheel row states the time it lands on instead. Adding a
   highlight back would promise a confirm step that does not exist.
+- **On a wheel row the clock time leads and the duration is the aside** — "17:50
+  (5 min)", not "5 min (17:50)". The row's whole job is to answer *when does it come
+  back*, and the duration is only how that time was arrived at; with no footer to
+  preview it, the answer should not be the parenthesised half. `PeskyWheel` styles
+  `label` as the primary text and `aside` dimmer, so the swap is entirely in which
+  string `ReminderSheet` passes to which — and four tests in `ReminderSheetTest` pin
+  the pairing, including the row that has to name a day ("Tomorrow 8:20 PM (30h)").
 - **The time chips commit an absolute millis; the duration chips commit a count of
   minutes.** Two callbacks on purpose. Converting a time to minutes-from-now at
   composition time drifts by however long the user takes to tap, and
@@ -628,9 +635,29 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   `close()` → `finishAndRemoveTask()`, because plain `finish()` leaves that task
   behind.
 - **A notification action that shows UI must be an activity PendingIntent.**
-  Android 12+ blocks notification trampolines, so Snooze cannot go through
-  `ReminderReceiver` — it opens `ReminderActivity` directly. Done stays a broadcast
-  because it shows nothing. There is an instrumented test asserting exactly this.
+  Android 12+ blocks notification trampolines, so the route that opens the sheet
+  cannot go through `ReminderReceiver` — the notification's **body tap** targets
+  `ReminderActivity` directly. Both *actions* are broadcasts, because neither shows
+  anything: Done finishes the task, Snooze 15 min moves it, and each posts a toast.
+  Instrumented tests assert the shape of all three.
+- **The notification's Snooze button commits, and says how long.** It is
+  `"Snooze " + SnoozeOptions.label(SnoozeOptions.QUICK_MINUTES)` → "Snooze 15 min",
+  built rather than written out so it cannot drift from the chip offering the same
+  duration. It used to open the sheet and could only say "Snooze", which made the
+  common answer — not now, a few minutes — cost a tap to be asked a question. Four
+  things about it:
+  - **15 minutes is `QUICK_MINUTES`, a constant of its own, not `PRESETS.first()`.**
+    Deriving it would let a reorder of the chips silently change what the button
+    does; a test pins the two together instead, so the reorder fails loudly.
+  - **It is the shortest chip on purpose.** The action fires without confirmation,
+    so it has to be the answer that is hardest to regret.
+  - **`Reminders.snooze` already did the whole job** — cancels the notification and
+    the nag chain, keeps a repeater's `anchorMillis` so the cycle does not drag, and
+    re-arms the alarm. The receiver branch adds no logic, only the toast, and by
+    construction can only see `MOVED` or `MISSING`, never `ALREADY_PAST`.
+  - **The body tap is now the sheet's only door from the notification**, so it is
+    load-bearing where it used to be redundant. It also needed its own request code
+    — `SLOT_OPEN` — the moment the action stopped sharing its PendingIntent.
 - **Task ids start at 1.** They double as notification ids and as the base for
   PendingIntent request codes (`taskId * 8 + slot`), so `0` is reserved for the
   alarm's show-intent.

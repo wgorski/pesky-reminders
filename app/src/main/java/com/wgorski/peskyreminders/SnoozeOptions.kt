@@ -12,6 +12,22 @@ object SnoozeOptions {
     /** The chips, in the order they are laid out: 15 min, 30 min, 1 hr, 3 hr. */
     val PRESETS = listOf(15, 30, 60, 180)
 
+    /**
+     * What the notification's Snooze action commits to, without asking.
+     *
+     * The shortest chip, deliberately. The action fires on one tap and shows no
+     * sheet, so it has to be the answer that is hardest to regret — "not now"
+     * rather than "not today" — and anything longer is still one tap on the
+     * notification body away, where the whole ladder lives.
+     *
+     * Written out rather than derived from [PRESETS], so reordering the chips
+     * cannot silently change what the notification does; a test pins the two
+     * together instead. [com.wgorski.peskyreminders.ReminderNotifier] titles the
+     * button `"Snooze " + label(QUICK_MINUTES)`, which is what stops the button
+     * disagreeing with the chip offering the same duration.
+     */
+    const val QUICK_MINUTES = 15
+
     /** The finest step on the wheel, and the granularity every entry is aligned to. */
     const val STEP_MINUTES = 15
 
