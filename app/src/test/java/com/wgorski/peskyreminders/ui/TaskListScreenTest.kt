@@ -3,6 +3,7 @@ package com.wgorski.peskyreminders.ui
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -220,7 +221,9 @@ class TaskListScreenTest {
     @Test fun ticking_an_active_task_reports_its_id() {
         show(listOf(overdueTask, upNextTask))
         compose.onNodeWithTag("check-1").performClick()
+        compose.waitUntil { toggled.size == 1 }
         compose.onNodeWithTag("check-2").performClick()
+        compose.waitUntil { toggled.size == 2 }
         assertEquals(listOf(1, 2), toggled)
     }
 
@@ -326,6 +329,7 @@ class TaskListScreenTest {
     @Test fun ticking_a_task_does_not_also_open_it() {
         show(listOf(overdueTask))
         compose.onNodeWithTag("check-1").performClick()
+        compose.waitUntil { toggled.isNotEmpty() }
         assertEquals(listOf(1), toggled)
         assertTrue("the circle must not reach the row beneath it", opened.isEmpty())
     }
@@ -338,8 +342,114 @@ class TaskListScreenTest {
     @Test fun ticking_an_overdue_task_does_not_also_raise_the_panel() {
         show(listOf(overdueTask))
         compose.onNodeWithTag("check-1").performClick()
+        compose.waitUntil { toggled.isNotEmpty() }
         assertEquals(listOf(1), toggled)
         assertTrue("the circle must not reach the row beneath it", reminded.isEmpty())
+    }
+
+    // ---- the tick's beat -----------------------------------------------------
+
+    /** How many circles are currently wearing a tick. */
+    private fun checkedCircles() =
+        compose.onAllNodesWithContentDescription("Done").fetchSemanticsNodes().size
+
+    /**
+     * The whole feature: the check is drawn *before* the store changes. Committing
+     * first would remove the row, so the circle that was tapped would never spend
+     * a single frame checked — which is exactly the old behaviour.
+     */
+    @Test fun the_check_fills_before_the_task_is_committed() {
+        show(listOf(overdueTask))
+        compose.mainClock.autoAdvance = false
+
+        compose.onNodeWithTag("check-1").performClick()
+        compose.mainClock.advanceTimeBy(100) // well inside the 280ms beat
+
+        assertEquals("the circle should be wearing its tick", 1, checkedCircles())
+        assertTrue("the commit must wait for the beat", toggled.isEmpty())
+    }
+
+    @Test fun the_tick_commits_once_the_beat_is_over() {
+        show(listOf(overdueTask))
+
+        compose.onNodeWithTag("check-1").performClick()
+        compose.waitUntil { toggled.isNotEmpty() }
+
+        assertEquals(listOf(1), toggled)
+    }
+
+    /** A completion keeps its check, and rides out with the row's exit fade. */
+    @Test fun a_completed_tick_keeps_its_check() {
+        outcome = ToggleOutcome.COMPLETED
+        show(listOf(overdueTask))
+
+        compose.onNodeWithTag("check-1").performClick()
+        compose.waitUntil { toggled.isNotEmpty() }
+
+        assertEquals(1, checkedCircles())
+    }
+
+    /**
+     * A repeater whose slot has not come refuses the tick and says so. The circle
+     * has to come back with it — a check left behind would claim a completion the
+     * app declined to make.
+     */
+    @Test fun a_refused_tick_gives_the_hollow_ring_back() {
+        outcome = ToggleOutcome.NOT_DUE_YET
+        show(listOf(upNextTask))
+
+        compose.onNodeWithTag("check-2").performClick()
+        compose.waitUntil { toggled.isNotEmpty() }
+        compose.waitUntil { checkedCircles() == 0 }
+    }
+
+    /**
+     * A repeater rolling forward is not done either — the next occurrence has not
+     * been finished, so the check drains as the row moves to its new band.
+     */
+    @Test fun a_rolled_forward_repeater_gives_the_hollow_ring_back_too() {
+        outcome = ToggleOutcome.ADVANCED
+        show(listOf(upNextTask))
+
+        compose.onNodeWithTag("check-2").performClick()
+        compose.waitUntil { toggled.isNotEmpty() }
+        compose.waitUntil { checkedCircles() == 0 }
+    }
+
+    /**
+     * A second tap inside the beat has to be swallowed by the circle, not fall
+     * through to the row — which is why the circle stays enabled and no-ops
+     * rather than disabling itself. A disabled `clickable` installs no pointer
+     * input at all, so the tap would reach the row and raise the action panel.
+     */
+    @Test fun a_second_tap_inside_the_beat_commits_once_and_opens_nothing() {
+        show(listOf(overdueTask))
+        compose.mainClock.autoAdvance = false
+
+        compose.onNodeWithTag("check-1").performClick()
+        compose.mainClock.advanceTimeBy(100)
+        compose.onNodeWithTag("check-1").performClick()
+        compose.mainClock.autoAdvance = true
+        compose.waitUntil { toggled.isNotEmpty() }
+
+        assertEquals(listOf(1), toggled)
+        assertTrue("the circle must not reach the row beneath it", reminded.isEmpty())
+        assertTrue(opened.isEmpty())
+    }
+
+    /**
+     * Un-ticking is an undo, not an achievement, so the done row's circle commits
+     * on the tap with nothing in front of it. The asymmetry is deliberate and is
+     * pinned here, or a later tidy-up "restoring" the symmetry would put a quarter
+     * second in front of every undo.
+     */
+    @Test fun un_ticking_a_done_row_has_no_beat() {
+        show(listOf(doneTask), doneExpanded = true)
+        compose.mainClock.autoAdvance = false
+
+        compose.onNodeWithTag("check-3").performClick()
+
+        assertEquals(listOf(3), toggled)
     }
 
     // ---- ordering -----------------------------------------------------------
