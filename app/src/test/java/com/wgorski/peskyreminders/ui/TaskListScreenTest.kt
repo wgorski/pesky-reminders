@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.wgorski.peskyreminders.Repeat
 import com.wgorski.peskyreminders.Task
+import com.wgorski.peskyreminders.ToggleOutcome
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -53,6 +54,13 @@ class TaskListScreenTest {
     private var sectionToggled = 0
     private var clearTapped = 0
 
+    /**
+     * What the screen's toggle callback reports back. A completion by default —
+     * the common case — and set per-test where the outcome is the thing under
+     * test. JUnit builds a fresh instance per test, so this resets on its own.
+     */
+    private var outcome = ToggleOutcome.COMPLETED
+
     private fun show(tasks: List<Task>, doneExpanded: Boolean = false) {
         compose.setContent {
             TaskListScreen(
@@ -61,7 +69,7 @@ class TaskListScreenTest {
                 use24h = false,
                 doneExpanded = doneExpanded,
                 onToggleDoneSection = { sectionToggled++ },
-                onToggleTask = { toggled += it },
+                onToggleTask = { toggled += it; outcome },
                 onAdd = { addTapped = true },
                 onOpenTask = { opened += it },
                 onRemindTask = { reminded += it },
@@ -126,7 +134,7 @@ class TaskListScreenTest {
                 use24h = false,
                 doneExpanded = false,
                 onToggleDoneSection = { sectionToggled++ },
-                onToggleTask = { toggled += it },
+                onToggleTask = { toggled += it; outcome },
                 onAdd = { addTapped = true },
                 onOpenTask = { opened += it },
                 onRemindTask = { reminded += it },

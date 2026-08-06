@@ -50,6 +50,7 @@ import androidx.compose.ui.zIndex
 import com.wgorski.peskyreminders.DueGroup
 import com.wgorski.peskyreminders.Task
 import com.wgorski.peskyreminders.TaskTime
+import com.wgorski.peskyreminders.ToggleOutcome
 
 private val CardShape = RoundedCornerShape(18.dp)
 
@@ -87,7 +88,10 @@ fun TaskListScreen(
     use24h: Boolean,
     doneExpanded: Boolean,
     onToggleDoneSection: () -> Unit,
-    onToggleTask: (Int) -> Unit,
+    // Returns what the toggle actually did: the row draws its check *before* this
+    // runs, and only a completion has earned the right to keep it. Asking rather
+    // than guessing is what keeps the not-due-yet rule in [Reminders.toggle].
+    onToggleTask: (Int) -> ToggleOutcome,
     onAdd: () -> Unit,
     onOpenSettings: () -> Unit = {},
     onOpenTask: (Int) -> Unit = {},
@@ -155,7 +159,10 @@ fun TaskListScreen(
                     if (doneExpanded) {
                         items(done, key = { "t-${it.id}" }) { task ->
                             DoneRow(
-                                task, onToggleTask, onOpenTask,
+                                // A done row has no beat in front of it, so the
+                                // outcome tells it nothing — the un-tick commits
+                                // on the tap and the lambda's result is dropped.
+                                task, { onToggleTask(it) }, onOpenTask,
                                 Modifier.cardLayer().animateItem(FADE_IN, MOVE, FADE_OUT),
                             )
                         }
@@ -237,7 +244,7 @@ private fun TaskRow(
     nowMillis: Long,
     use24h: Boolean,
     overdue: Boolean,
-    onToggle: (Int) -> Unit,
+    onToggle: (Int) -> ToggleOutcome,
     onOpen: (Int) -> Unit,
     onRemind: (Int) -> Unit,
     modifier: Modifier = Modifier,
