@@ -29,9 +29,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -131,11 +131,29 @@ fun TaskListScreen(
     val bands = active.groupBy { TaskTime.groupOf(it.dueMillis, nowMillis) }
     val done = tasks.filter { it.done }.sortedByDescending { it.dueMillis }
 
+    // Pending ticks are timed above the list, not inside the row. A LazyColumn
+    // disposes an item the moment it scrolls out of view, and that would cancel
+    // the beat's coroutine mid-delay and throw the completion away — the one
+    // interaction this app exists for, lost to a fling.
+    //
+    // An id stays in the list after a COMPLETED commit: the row is on its way out
+    // and must keep its check for the exit. It leaves on any other outcome, and
+    // on an un-tick, which is what stops a reopened task wearing a stale one.
+    val ticked = remember { mutableStateListOf<Int>() }
+    ticked.forEach { id ->
+        key(id) {
+            LaunchedEffect(id) {
+                delay((TICK_FILL + TICK_HOLD).toLong())
+                if (onToggleTask(id) != ToggleOutcome.COMPLETED) ticked.remove(id)
+            }
+        }
+    }
+
     Box(Modifier.fillMaxSize().background(PeskyColors.Screen)) {
         Column(Modifier.fillMaxSize()) {
             Header(onOpenSettings)
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f),
+                modifier = Modifier.fillMaxWidth().weight(1f).testTag("task-list"),
                 // Rows are 8dp apart; section headers add their own 12dp on top
                 // to make the 20dp gap between sections. Spacing has to live on
                 // the items rather than on the arrangement now that every row is
@@ -164,7 +182,9 @@ fun TaskListScreen(
                     items(rows, key = { "t-${it.id}" }) { task ->
                         TaskRow(
                             task, nowMillis, use24h, band == DueGroup.OVERDUE,
-                            onToggleTask, onOpenTask, onRemindTask,
+                            task.id in ticked,
+                            { if (task.id !in ticked) ticked.add(task.id) },
+                            onOpenTask, onRemindTask,
                             Modifier.cardLayer().animateItem(FADE_IN, MOVE, FADE_OUT),
                         )
                     }
@@ -186,7 +206,11 @@ fun TaskListScreen(
                                 // A done row has no beat in front of it, so the
                                 // outcome tells it nothing — the un-tick commits
                                 // on the tap and the lambda's result is dropped.
-                                task, { onToggleTask(it) }, onOpenTask,
+                                // Removing the id here is what stops a
+                                // completed-then-reopened task's new active row
+                                // from rendering with a check it did not earn
+                                // this time around.
+                                task, { ticked.remove(it); onToggleTask(it) }, onOpenTask,
                                 Modifier.cardLayer().animateItem(FADE_IN, MOVE, FADE_OUT),
                             )
                         }
@@ -268,25 +292,19 @@ private fun TaskRow(
     nowMillis: Long,
     use24h: Boolean,
     overdue: Boolean,
-    onToggle: (Int) -> ToggleOutcome,
+    // Whether this id is mid-beat or holding a completed check, and the way to
+    // start one. Both are decided above the `LazyColumn` now — see the `ticked`
+    // list at the top of `TaskListScreen` — because a row is exactly what a
+    // fling can dispose mid-beat, taking a `remember`ed flag and its coroutine
+    // with it.
+    ticked: Boolean,
+    onBeginTick: () -> Unit,
     onOpen: (Int) -> Unit,
     onRemind: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val due = TaskTime.formatFull(task.dueMillis, nowMillis, use24h)
     val haptics = LocalHapticFeedback.current
-    // The tick gets a beat: the circle fills and holds, and only then does the
-    // store change and the row go. The commit reports back because three of the
-    // four outcomes leave this row on screen, and a row that stays must not keep
-    // a check it did not earn. Which outcome is which is [Reminders.toggle]'s
-    // business — re-deriving the not-due-yet rule here would be a second copy of
-    // it, and it would drift.
-    var ticking by remember { mutableStateOf(false) }
-    LaunchedEffect(ticking) {
-        if (!ticking) return@LaunchedEffect
-        delay((TICK_FILL + TICK_HOLD).toLong())
-        if (onToggle(task.id) != ToggleOutcome.COMPLETED) ticking = false
-    }
     Row(
         // The whole row is one target. The check circle is nested inside it, so a
         // tap that lands on the circle ticks the task off and never reaches this.
@@ -319,13 +337,12 @@ private fun TaskRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // A second tap inside the beat is swallowed here rather than by disabling
-        // the circle: a disabled `clickable` installs no pointer input, so the tap
-        // would fall through to the row and open the editor or the action panel.
-        // The repeat tap is a no-op because writing `true` over `true` is
-        // structurally equal — Compose skips the invalidation and
-        // `LaunchedEffect(ticking)` above never re-fires — so `if (!ticking)`
-        // states that intent rather than causing it.
-        CheckCircle(checked = ticking, tag = "check-${task.id}") { if (!ticking) ticking = true }
+        // the circle: a disabled `clickable` consumes nothing, so the tap would
+        // carry on up the hit path to the row's own `combinedClickable` below and
+        // open the editor or the action panel. The repeat tap is a no-op because
+        // [onBeginTick] only adds this id to the pending list once — see the
+        // `if (task.id !in ticked)` guard at the `TaskListScreen` call site.
+        CheckCircle(checked = ticked, tag = "check-${task.id}", onClick = onBeginTick)
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp),

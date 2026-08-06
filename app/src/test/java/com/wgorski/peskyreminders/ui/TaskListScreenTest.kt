@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.wgorski.peskyreminders.Repeat
@@ -349,7 +350,11 @@ class TaskListScreenTest {
 
     // ---- the tick's beat -----------------------------------------------------
 
-    /** How many circles are currently wearing a tick. */
+    /**
+     * How many circles are currently wearing a tick. Only correct for an
+     * active-only task list — an expanded Done section wears one tick per row
+     * of its own, and this helper cannot tell those apart from the beat.
+     */
     private fun checkedCircles() =
         compose.onAllNodesWithContentDescription("Done").fetchSemanticsNodes().size
 
@@ -399,10 +404,19 @@ class TaskListScreenTest {
     @Test fun a_refused_tick_gives_the_hollow_ring_back() {
         outcome = ToggleOutcome.NOT_DUE_YET
         show(listOf(upNextTask))
+        // autoAdvance idles the clock straight through the whole beat while
+        // fetching semantics nodes, so a waitUntil { checkedCircles() == 0 }
+        // is satisfied vacuously — 0 whether or not a check was ever drawn.
+        // Stepping the clock by hand is what proves the fill happened first.
+        compose.mainClock.autoAdvance = false
 
         compose.onNodeWithTag("check-2").performClick()
-        compose.waitUntil { toggled.isNotEmpty() }
-        compose.waitUntil { checkedCircles() == 0 }
+        compose.mainClock.advanceTimeBy(100)
+        assertEquals("it fills first", 1, checkedCircles())
+
+        compose.mainClock.advanceTimeBy(400) // past the beat and the drain
+        assertEquals(listOf(2), toggled)
+        assertEquals("and drains after the refusal", 0, checkedCircles())
     }
 
     /**
@@ -412,17 +426,26 @@ class TaskListScreenTest {
     @Test fun a_rolled_forward_repeater_gives_the_hollow_ring_back_too() {
         outcome = ToggleOutcome.ADVANCED
         show(listOf(upNextTask))
+        // Same trap as the refusal test above: fetchSemanticsNodes() idles the
+        // clock while autoAdvance is on, so a bare waitUntil { == 0 } cannot
+        // tell "drained" from "never drawn". Step the clock by hand instead.
+        compose.mainClock.autoAdvance = false
 
         compose.onNodeWithTag("check-2").performClick()
-        compose.waitUntil { toggled.isNotEmpty() }
-        compose.waitUntil { checkedCircles() == 0 }
+        compose.mainClock.advanceTimeBy(100)
+        assertEquals("it fills first", 1, checkedCircles())
+
+        compose.mainClock.advanceTimeBy(400) // past the beat and the drain
+        assertEquals(listOf(2), toggled)
+        assertEquals("and drains after the roll-forward", 0, checkedCircles())
     }
 
     /**
      * A second tap inside the beat has to be swallowed by the circle, not fall
      * through to the row — which is why the circle stays enabled and no-ops
-     * rather than disabling itself. A disabled `clickable` installs no pointer
-     * input at all, so the tap would reach the row and raise the action panel.
+     * rather than disabling itself. A disabled `clickable` consumes nothing, so
+     * the tap would carry on up the hit path to the row and raise the action
+     * panel.
      */
     @Test fun a_second_tap_inside_the_beat_commits_once_and_opens_nothing() {
         show(listOf(overdueTask))
@@ -433,6 +456,12 @@ class TaskListScreenTest {
         compose.onNodeWithTag("check-1").performClick()
         compose.mainClock.autoAdvance = true
         compose.waitUntil { toggled.isNotEmpty() }
+
+        // The second tap landed at t≈100, so a hypothetical second commit would
+        // land at t≈380. Advance well past that before asserting, or "commits
+        // once" is unproven — waitUntil above only proves the first one arrived.
+        compose.mainClock.advanceTimeBy(400)
+        compose.waitForIdle()
 
         assertEquals(listOf(1), toggled)
         assertTrue("the circle must not reach the row beneath it", reminded.isEmpty())
@@ -452,6 +481,33 @@ class TaskListScreenTest {
         compose.onNodeWithTag("check-3").performClick()
 
         assertEquals(listOf(3), toggled)
+    }
+
+    /**
+     * FIX 1's regression pin. The pending tick used to be `remember`ed and timed
+     * from inside `TaskRow` itself, which is a `LazyColumn` item — and a lazy
+     * list disposes an item's subcomposition the moment it scrolls out of the
+     * viewport, cancelling that coroutine mid-`delay` and throwing the
+     * completion away. "Tick the top row, then fling down the list" is an
+     * ordinary gesture, not a corner case. The fix hoists the pending state into
+     * `TaskListScreen`, above the `LazyColumn`, so the row's disposal cannot
+     * touch it. A list of 30 is enough to push row 1 well outside the viewport
+     * and the lazy layout's prefetch window on this test's device qualifiers.
+     */
+    @Test fun a_tick_survives_its_row_scrolling_out_of_view() {
+        val many = (1..30).map { i ->
+            Task(i, "Task $i", at(2026, Calendar.JULY, 25, 8, i - 1), Repeat.ONCE)
+        }
+        show(many)
+        compose.mainClock.autoAdvance = false
+
+        compose.onNodeWithTag("check-1").performClick()
+        compose.mainClock.advanceTimeBy(100) // inside the beat
+        compose.onNodeWithTag("task-list").performScrollToIndex(29)
+        compose.mainClock.autoAdvance = true
+
+        compose.waitUntil { toggled.isNotEmpty() }
+        assertEquals(listOf(1), toggled)
     }
 
     // ---- ordering -----------------------------------------------------------
