@@ -74,7 +74,7 @@ To publish, use the `release` skill (`.claude/skills/release/`).
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n com.wgorski.peskyreminders/.MainActivity
 
-# The deterministic suite — JVM only, no device, ~6s. Run this constantly.
+# The deterministic suite — JVM only, no device, ~12s. Run this constantly.
 ./gradlew :app:testDebugUnitTest
 
 # Instrumented tests (emulator must be running).
@@ -382,8 +382,10 @@ does NOT fire the delete-intent, so those clear the notification without re-post
     same as for the toast.
   - **A second tap inside the beat is swallowed, not disabled.** A disabled
     `clickable` installs no pointer input at all, so the tap would fall through to
-    the row and raise the editor or the action panel. The circle stays enabled and
-    its lambda no-ops while `ticking`.
+    the row and raise the editor or the action panel. The repeat tap is a no-op
+    because the write is structurally equal — `true` over `true` lets Compose
+    skip the invalidation, so `LaunchedEffect(ticking)`'s key never changes;
+    `if (!ticking)` states that intent, it does not cause it.
   - **`animateFloatAsState` initialises at its target**, which is the whole reason
     a done row is still instant and a row arriving in the Done section does not
     replay the beat it just performed.

@@ -321,6 +321,10 @@ private fun TaskRow(
         // A second tap inside the beat is swallowed here rather than by disabling
         // the circle: a disabled `clickable` installs no pointer input, so the tap
         // would fall through to the row and open the editor or the action panel.
+        // The repeat tap is a no-op because writing `true` over `true` is
+        // structurally equal — Compose skips the invalidation and
+        // `LaunchedEffect(ticking)` above never re-fires — so `if (!ticking)`
+        // states that intent rather than causing it.
         CheckCircle(checked = ticking, tag = "check-${task.id}") { if (!ticking) ticking = true }
         Column(
             modifier = Modifier.weight(1f),
