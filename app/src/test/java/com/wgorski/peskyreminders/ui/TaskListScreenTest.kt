@@ -368,10 +368,28 @@ class TaskListScreenTest {
         compose.mainClock.autoAdvance = false
 
         compose.onNodeWithTag("check-1").performClick()
-        compose.mainClock.advanceTimeBy(100) // well inside the 280ms beat
+        compose.mainClock.advanceTimeBy(50) // well inside the 120ms beat
 
         assertEquals("the circle should be wearing its tick", 1, checkedCircles())
         assertTrue("the commit must wait for the beat", toggled.isEmpty())
+    }
+
+    /**
+     * The other half of the same requirement, and the one with no natural guard:
+     * the beat is meant to be almost instant. Every other test here waits for the
+     * commit however long it takes, so a hold quietly creeping back up would go
+     * unnoticed — this one puts a ceiling on it. 200ms is chosen to be loose
+     * enough not to fail on the current 120ms for a frame-rounding reason, and
+     * tight enough to fail the 280ms this started out as.
+     */
+    @Test fun the_beat_is_over_fast_enough_to_feel_instant() {
+        show(listOf(overdueTask))
+        compose.mainClock.autoAdvance = false
+
+        compose.onNodeWithTag("check-1").performClick()
+        compose.mainClock.advanceTimeBy(200)
+
+        assertEquals("the row should already be committed by 200ms", listOf(1), toggled)
     }
 
     @Test fun the_tick_commits_once_the_beat_is_over() {
@@ -390,7 +408,7 @@ class TaskListScreenTest {
 
         compose.onNodeWithTag("check-1").performClick()
         compose.waitUntil { toggled.isNotEmpty() }
-        compose.mainClock.advanceTimeBy(300) // past TICK_FILL, so a drain would have finished
+        compose.mainClock.advanceTimeBy(300) // far past TICK_FILL, so a drain would have finished
         compose.waitForIdle()
 
         assertEquals(1, checkedCircles())
@@ -411,7 +429,7 @@ class TaskListScreenTest {
         compose.mainClock.autoAdvance = false
 
         compose.onNodeWithTag("check-2").performClick()
-        compose.mainClock.advanceTimeBy(100)
+        compose.mainClock.advanceTimeBy(50)
         assertEquals("it fills first", 1, checkedCircles())
 
         compose.mainClock.advanceTimeBy(400) // past the beat and the drain
@@ -432,7 +450,7 @@ class TaskListScreenTest {
         compose.mainClock.autoAdvance = false
 
         compose.onNodeWithTag("check-2").performClick()
-        compose.mainClock.advanceTimeBy(100)
+        compose.mainClock.advanceTimeBy(50)
         assertEquals("it fills first", 1, checkedCircles())
 
         compose.mainClock.advanceTimeBy(400) // past the beat and the drain
@@ -452,13 +470,13 @@ class TaskListScreenTest {
         compose.mainClock.autoAdvance = false
 
         compose.onNodeWithTag("check-1").performClick()
-        compose.mainClock.advanceTimeBy(100)
+        compose.mainClock.advanceTimeBy(50)
         compose.onNodeWithTag("check-1").performClick()
         compose.mainClock.autoAdvance = true
         compose.waitUntil { toggled.isNotEmpty() }
 
-        // The second tap landed at t≈100, so a hypothetical second commit would
-        // land at t≈380. Advance well past that before asserting, or "commits
+        // The second tap landed at t≈50, so a hypothetical second commit would
+        // land at t≈170. Advance well past that before asserting, or "commits
         // once" is unproven — waitUntil above only proves the first one arrived.
         compose.mainClock.advanceTimeBy(400)
         compose.waitForIdle()
@@ -502,7 +520,7 @@ class TaskListScreenTest {
         compose.mainClock.autoAdvance = false
 
         compose.onNodeWithTag("check-1").performClick()
-        compose.mainClock.advanceTimeBy(100) // inside the beat
+        compose.mainClock.advanceTimeBy(50) // inside the beat
         compose.onNodeWithTag("task-list").performScrollToIndex(29)
         compose.mainClock.autoAdvance = true
 

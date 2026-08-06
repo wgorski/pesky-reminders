@@ -17,8 +17,12 @@ completion the user just performed is reported only by a toast and by an absence
 ## What we are building
 
 A beat between the tap and the departure: the ring fills into the mint disc, the
-tick snaps in, it holds long enough to be read, and *then* the row goes. About a
-quarter second, and only on a tick that means something.
+tick snaps in and settles, and *then* the row goes. Almost instant — about an
+eighth of a second — but seen, and only on a tick that means something.
+
+The wait is short because it does not have to carry the whole job: the row is
+still drawn, check and all, for the whole of its exit fade, so the check stays
+on screen about twice as long as the wait in front of it.
 
 ## The circle
 
@@ -26,7 +30,7 @@ quarter second, and only on a tick that means something.
 animated float where `0f` is the hollow ring and `1f` is the disc with its tick.
 
 - The `2dp CheckRing` border fades out as the `Check` disc fades up over it,
-  across **`TICK_FILL` = 170ms**.
+  across **`TICK_FILL` = 90ms**.
 - The tick scales `0.6f → 1f` on an overshoot easing, so it lands with a snap
   rather than swelling into place. The kit has no ripples and expresses press
   and arrival as scale — `pressable` already does exactly this — so the beat
@@ -59,11 +63,12 @@ tap → add the id to the pending list   circle fills (TICK_FILL); a second tap
                                         is a no-op — adding an id already in
                                         the list is guarded at the call site,
                                         so the circle stays enabled throughout
-      hold TICK_HOLD = 110ms           so the check is read, not glimpsed
+      hold TICK_HOLD = 30ms            just enough for the check to settle;
+                                        FADE_OUT is what keeps it readable
       outcome = onToggleTask(id)       the real Reminders.toggle — store,
                                         alarm, notification, toast
       outcome != COMPLETED  →          remove the id; the check drains back
-                                        over the same 170ms
+                                        over the same 90ms
 ```
 
 `TICK_FILL` and `TICK_HOLD` join the existing `MOVE` / `FADE_IN` / `FADE_OUT`
@@ -115,13 +120,13 @@ different ways depending on the task's repeat rule would be the odd choice.
 because that gesture has no other acknowledgement until the sheet arrives. The
 check now acknowledges itself.
 
-**The row's own tap stays live during the beat.** There is a ~280ms window in
+**The row's own tap stays live during the beat.** There is a ~120ms window in
 which the row could be tapped a second time. The case worth naming is an
 overdue row, not an edited one: overdue is where a tick is likeliest, and an
 overdue row's tap raises the action panel, not the editor. Tick an overdue
-repeater, tap the row again inside 280ms, and the panel opens over a task that
+repeater, tap the row again inside 120ms, and the panel opens over a task that
 then rolls forward underneath it. Nothing corrupts — every path re-reads the
-task by id — and landing two taps in 280ms is enough of a reach that guarding
+task by id — and landing two taps in 120ms is enough of a reach that guarding
 it would add a second piece of state for a case nobody will hit.
 
 **The reminder sheet's Done is untouched.** It closes the sheet rather than
