@@ -74,7 +74,7 @@ To publish, use the `release` skill (`.claude/skills/release/`).
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n com.wgorski.peskyreminders/.MainActivity
 
-# The deterministic suite — JVM only, no device, ~6s. Run this constantly.
+# The deterministic suite — JVM only, no device, ~12s. Run this constantly.
 ./gradlew :app:testDebugUnitTest
 
 # Instrumented tests (emulator must be running).
@@ -87,7 +87,7 @@ adb shell am start -n com.wgorski.peskyreminders/.MainActivity
 
 Two tiers, and they cover different things.
 
-**Deterministic (JVM, ~9s, no device)** — `app/src/test/`, 227 tests. Robolectric hosts
+**Deterministic (JVM, ~12s, no device)** — `app/src/test/`, 234 tests. Robolectric hosts
 the real composables, and every screen takes `nowMillis` as a parameter instead of
 reading the clock, so each expected label is a fixed string. `TaskTimeTest` covers the
 date maths; `TaskListScreenTest`, `AddTaskSheetTest` and `EditTaskSheetTest` drive
@@ -369,6 +369,39 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   `Modifier.pressable(scale = …)` from `ui/Common.kt`, and put it **before**
   `.clip()`/`.background()` in the chain, or only the content scales and the
   background stays put.
+- **Ticking a task off has a beat, and the commit waits for it.** The ring fills
+  into the mint disc, the tick pops in, the check holds long enough to be read
+  (`TICK_FILL` + `TICK_HOLD`, ~280ms, in `TaskListScreen.kt`), and only then does
+  `Reminders.toggle` run and the row leave. Five things hold it together:
+  - **The check is drawn before the store changes**, because the store change is
+    what removes the row. So the tap animates before anyone knows whether the tick
+    will be honoured — which is why `onToggleTask` returns a `ToggleOutcome`. Only
+    `COMPLETED` keeps the check — every other outcome either leaves the row on
+    screen or takes it away, and neither has earned one. Don't predict this by
+    re-deriving the not-due-yet rule in the UI — it lives in `Reminders.toggle`,
+    same as for the toast.
+  - **The pending ticks are timed above the `LazyColumn`, not inside the row.** A
+    lazy list disposes an item's subcomposition the moment it scrolls out of
+    view, which would cancel a `remember`ed flag's coroutine mid-`delay` and
+    throw the completion away — "tick the top row, then fling down the list" is
+    an ordinary gesture. `TaskListScreen` holds a `mutableStateListOf<Int>` of
+    pending ids and times the commit from there; `TaskRow` only reads whether its
+    id is in that list and asks to add it. It is `remember`, not
+    `rememberSaveable`, on purpose: restoring a pending tick across process death
+    would commit a tap made in a previous process, so a rotation inside the beat
+    still loses it — a deliberate trade, not a bug to fix later.
+  - **A second tap inside the beat is swallowed, not disabled.** A disabled
+    `clickable` consumes nothing, so the tap would carry on up the hit path to
+    the row's own `combinedClickable` and raise the editor or the action panel.
+    The repeat tap is a no-op because adding the id is itself guarded —
+    `if (task.id !in ticked) ticked.add(task.id)` at the `TaskListScreen` call
+    site — not because the circle stops responding.
+  - **`animateFloatAsState` initialises at its target**, which is the whole reason
+    a done row is still instant and a row arriving in the Done section does not
+    replay the beat it just performed.
+  - **Un-ticking has no beat, deliberately.** Removing a check is an undo, and a
+    quarter second in front of an undo is only latency. A test pins the asymmetry
+    so it does not get "fixed".
 - **An adaptive icon only ever shows the central 72dp of its 108dp canvas**, so
   artwork drawn to the full canvas comes out looking zoomed in. The bell mark
   spans 47dp, about 65% of the visible area, matching the stock icons.

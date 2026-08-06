@@ -79,6 +79,9 @@ fun PeskyApp() {
                     val outcome = Reminders.toggle(context, id)
                     now = System.currentTimeMillis()
                     ActionToast.toggled(context, outcome, id, now, use24h)
+                    // And back to the row, which has already drawn its check and
+                    // needs to know whether to keep it.
+                    outcome
                 },
                 onAdd = { sheetOpen = true },
                 onOpenSettings = { settingsOpen = true },

@@ -1,5 +1,6 @@
 package com.wgorski.peskyreminders.ui
 
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
@@ -26,7 +27,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,6 +39,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
@@ -50,6 +56,8 @@ import androidx.compose.ui.zIndex
 import com.wgorski.peskyreminders.DueGroup
 import com.wgorski.peskyreminders.Task
 import com.wgorski.peskyreminders.TaskTime
+import com.wgorski.peskyreminders.ToggleOutcome
+import kotlinx.coroutines.delay
 
 private val CardShape = RoundedCornerShape(18.dp)
 
@@ -66,6 +74,23 @@ private val MOVE: FiniteAnimationSpec<IntOffset> = tween(280, easing = FastOutSl
 private val FADE_IN: FiniteAnimationSpec<Float> =
     tween(180, delayMillis = 160, easing = LinearOutSlowInEasing)
 private val FADE_OUT: FiniteAnimationSpec<Float> = tween(140, easing = FastOutLinearInEasing)
+
+/**
+ * The beat between ticking a task off and its row leaving.
+ *
+ * [TICK_FILL] is the crossfade from hollow ring to filled disc and the tick's pop;
+ * [TICK_HOLD] is how long the finished check sits there before the store changes.
+ * Without the hold the check is a flicker inside the exit fade, and the point is
+ * that the completion is legible.
+ *
+ * [TICK_POP] overshoots on purpose. The kit expresses arrival as scale and nothing
+ * else — see `pressable` — and a tick that swells straight to size reads slower
+ * than one that lands.
+ */
+private const val TICK_FILL = 170
+private const val TICK_HOLD = 110
+private const val TICK_FROM = 0.6f
+private val TICK_POP = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
 
 /** The extra space that turns an 8dp row gap into a 20dp gap before a heading. */
 private fun Modifier.sectionGap() = this.padding(top = 12.dp)
@@ -87,7 +112,10 @@ fun TaskListScreen(
     use24h: Boolean,
     doneExpanded: Boolean,
     onToggleDoneSection: () -> Unit,
-    onToggleTask: (Int) -> Unit,
+    // Returns what the toggle actually did: the row draws its check *before* this
+    // runs, and only a completion has earned the right to keep it. Asking rather
+    // than guessing is what keeps the not-due-yet rule in [Reminders.toggle].
+    onToggleTask: (Int) -> ToggleOutcome,
     onAdd: () -> Unit,
     onOpenSettings: () -> Unit = {},
     onOpenTask: (Int) -> Unit = {},
@@ -103,11 +131,29 @@ fun TaskListScreen(
     val bands = active.groupBy { TaskTime.groupOf(it.dueMillis, nowMillis) }
     val done = tasks.filter { it.done }.sortedByDescending { it.dueMillis }
 
+    // Pending ticks are timed above the list, not inside the row. A LazyColumn
+    // disposes an item the moment it scrolls out of view, and that would cancel
+    // the beat's coroutine mid-delay and throw the completion away — the one
+    // interaction this app exists for, lost to a fling.
+    //
+    // An id stays in the list after a COMPLETED commit: the row is on its way out
+    // and must keep its check for the exit. It leaves on any other outcome, and
+    // on an un-tick, which is what stops a reopened task wearing a stale one.
+    val ticked = remember { mutableStateListOf<Int>() }
+    ticked.forEach { id ->
+        key(id) {
+            LaunchedEffect(id) {
+                delay((TICK_FILL + TICK_HOLD).toLong())
+                if (onToggleTask(id) != ToggleOutcome.COMPLETED) ticked.remove(id)
+            }
+        }
+    }
+
     Box(Modifier.fillMaxSize().background(PeskyColors.Screen)) {
         Column(Modifier.fillMaxSize()) {
             Header(onOpenSettings)
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f),
+                modifier = Modifier.fillMaxWidth().weight(1f).testTag("task-list"),
                 // Rows are 8dp apart; section headers add their own 12dp on top
                 // to make the 20dp gap between sections. Spacing has to live on
                 // the items rather than on the arrangement now that every row is
@@ -136,7 +182,9 @@ fun TaskListScreen(
                     items(rows, key = { "t-${it.id}" }) { task ->
                         TaskRow(
                             task, nowMillis, use24h, band == DueGroup.OVERDUE,
-                            onToggleTask, onOpenTask, onRemindTask,
+                            task.id in ticked,
+                            { if (task.id !in ticked) ticked.add(task.id) },
+                            onOpenTask, onRemindTask,
                             Modifier.cardLayer().animateItem(FADE_IN, MOVE, FADE_OUT),
                         )
                     }
@@ -155,7 +203,14 @@ fun TaskListScreen(
                     if (doneExpanded) {
                         items(done, key = { "t-${it.id}" }) { task ->
                             DoneRow(
-                                task, onToggleTask, onOpenTask,
+                                // A done row has no beat in front of it, so the
+                                // outcome tells it nothing — the un-tick commits
+                                // on the tap and the lambda's result is dropped.
+                                // Removing the id here is what stops a
+                                // completed-then-reopened task's new active row
+                                // from rendering with a check it did not earn
+                                // this time around.
+                                task, { ticked.remove(it); onToggleTask(it) }, onOpenTask,
                                 Modifier.cardLayer().animateItem(FADE_IN, MOVE, FADE_OUT),
                             )
                         }
@@ -237,7 +292,13 @@ private fun TaskRow(
     nowMillis: Long,
     use24h: Boolean,
     overdue: Boolean,
-    onToggle: (Int) -> Unit,
+    // Whether this id is mid-beat or holding a completed check, and the way to
+    // start one. Both are decided above the `LazyColumn` now — see the `ticked`
+    // list at the top of `TaskListScreen` — because a row is exactly what a
+    // fling can dispose mid-beat, taking a `remember`ed flag and its coroutine
+    // with it.
+    ticked: Boolean,
+    onBeginTick: () -> Unit,
     onOpen: (Int) -> Unit,
     onRemind: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -275,7 +336,13 @@ private fun TaskRow(
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CheckCircle(checked = false, tag = "check-${task.id}") { onToggle(task.id) }
+        // A second tap inside the beat is swallowed here rather than by disabling
+        // the circle: a disabled `clickable` consumes nothing, so the tap would
+        // carry on up the hit path to the row's own `combinedClickable` below and
+        // open the editor or the action panel. The repeat tap is a no-op because
+        // [onBeginTick] only adds this id to the pending list once — see the
+        // `if (task.id !in ticked)` guard at the `TaskListScreen` call site.
+        CheckCircle(checked = ticked, tag = "check-${task.id}", onClick = onBeginTick)
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -316,27 +383,48 @@ private fun RepeatPill(label: String) {
     }
 }
 
-/** The 28dp tap target that ticks a task off — hollow ring, or a filled mint disc. */
+/**
+ * The 28dp tap target that ticks a task off — hollow ring, or a filled mint disc.
+ *
+ * [checked] drives a crossfade rather than picking between two looks: the ring
+ * fades out as the disc fades in, and the tick pops from [TICK_FROM] to full size.
+ * `animateFloatAsState` initialises *at* its target, so anything that composes
+ * already checked plays nothing — which is what keeps a done row instant, and what
+ * stops a row arriving in the Done section from replaying the beat it just
+ * performed at the other end of the move.
+ */
 @Composable
 private fun CheckCircle(checked: Boolean, tag: String, onClick: () -> Unit) {
+    val fill by animateFloatAsState(
+        targetValue = if (checked) 1f else 0f,
+        animationSpec = tween(TICK_FILL, easing = FastOutSlowInEasing),
+        label = "check-fill",
+    )
+    val pop by animateFloatAsState(
+        targetValue = if (checked) 1f else TICK_FROM,
+        animationSpec = tween(TICK_FILL, easing = TICK_POP),
+        label = "check-pop",
+    )
     Box(
         modifier = Modifier
             .size(28.dp)
             .testTag(tag)
             .pressable(scale = 0.88f, onClick = onClick)
             .clip(CircleShape)
-            .then(
-                if (checked) Modifier.background(PeskyColors.Check)
-                else Modifier.border(2.dp, PeskyColors.CheckRing, CircleShape)
-            ),
+            .background(PeskyColors.Check.copy(alpha = fill))
+            .border(2.dp, PeskyColors.CheckRing.copy(alpha = 1f - fill), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        if (checked) {
+        // Composed only once there is something to see, so an untouched circle
+        // carries no "Done" — for a screen reader or for a test.
+        if (fill > 0f) {
             Icon(
                 imageVector = PeskyIcons.Check,
                 contentDescription = "Done",
                 tint = PeskyColors.Screen,
-                modifier = Modifier.size(14.dp),
+                modifier = Modifier
+                    .size(14.dp)
+                    .graphicsLayer { alpha = fill; scaleX = pop; scaleY = pop },
             )
         }
     }

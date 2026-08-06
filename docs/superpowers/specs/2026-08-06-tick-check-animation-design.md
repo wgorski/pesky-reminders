@@ -43,22 +43,37 @@ replaying the beat at the far end of the move.
 
 ## The delayed commit
 
-`TaskRow` holds the pending state, because the row is what owns the outcome of
-its own tap:
+`TaskListScreen` holds the pending state, one level above the row, not inside
+`TaskRow` itself as first drafted. `TaskRow` is a `LazyColumn` item, and a lazy
+list disposes an item's subcomposition the moment it scrolls out of the
+viewport — a `remember`ed flag and the coroutine timing its commit would be
+cancelled right along with it, discarding a completion the user already made.
+"Tick the top row, then fling down the list" is an ordinary gesture, so this is
+not a corner case. `TaskListScreen` keeps a `mutableStateListOf<Int>` of ids
+mid-beat and times each commit from a `LaunchedEffect` keyed on the id, above
+the `LazyColumn`; `TaskRow` only reads whether its id is in that list and asks
+to add it:
 
 ```
-tap → ticking = true            circle fills (TICK_FILL); further taps on the
-                                circle are ignored while it is true
-      hold TICK_HOLD = 110ms    so the check is read, not glimpsed
-      outcome = onToggle(id)    the real Reminders.toggle — store, alarm,
-                                notification, toast
-      outcome != COMPLETED  →   ticking = false; the check drains back over
-                                the same 170ms
+tap → add the id to the pending list   circle fills (TICK_FILL); a second tap
+                                        is a no-op — adding an id already in
+                                        the list is guarded at the call site,
+                                        so the circle stays enabled throughout
+      hold TICK_HOLD = 110ms           so the check is read, not glimpsed
+      outcome = onToggleTask(id)       the real Reminders.toggle — store,
+                                        alarm, notification, toast
+      outcome != COMPLETED  →          remove the id; the check drains back
+                                        over the same 170ms
 ```
 
 `TICK_FILL` and `TICK_HOLD` join the existing `MOVE` / `FADE_IN` / `FADE_OUT`
 specs at the top of `TaskListScreen.kt`, so every duration on this screen is
 declared in one place.
+
+The list is `remember`, not `rememberSaveable`, on purpose: restoring a
+pending tick across process death would commit a tap made in a previous
+process, so a rotation inside the beat still loses that tick. That is a
+deliberate trade, not a gap the next pass should close.
 
 ## Why the callback must report the outcome
 
@@ -72,7 +87,7 @@ honoured. Ticking has four endings and three of them leave the row on screen:
 | `ADVANCED` | moves to its next occurrence's band | drains back — the next occurrence is not done |
 | `NOT_DUE_YET` | stays exactly where it is, refused | drains back, as the toast explains why |
 | `REOPENED` | unreachable from an active row — it is not done | drains back |
-| `MISSING` | the task is gone; nothing left to draw | drains back |
+| `MISSING` | the task is gone; nothing left to draw | nothing to drain — there is no row left to draw it on |
 
 The UI cannot tell those apart without re-deriving the not-due-yet rule that
 `Reminders.toggle` owns, and CLAUDE.md is explicit that a second copy of that
@@ -101,9 +116,13 @@ because that gesture has no other acknowledgement until the sheet arrives. The
 check now acknowledges itself.
 
 **The row's own tap stays live during the beat.** There is a ~280ms window in
-which the row could be tapped and open the editor for a task about to complete.
-The editor opens on done rows anyway, so nothing breaks, and guarding it would
-add a second piece of state for a case nobody will hit.
+which the row could be tapped a second time. The case worth naming is an
+overdue row, not an edited one: overdue is where a tick is likeliest, and an
+overdue row's tap raises the action panel, not the editor. Tick an overdue
+repeater, tap the row again inside 280ms, and the panel opens over a task that
+then rolls forward underneath it. Nothing corrupts — every path re-reads the
+task by id — and landing two taps in 280ms is enough of a reach that guarding
+it would add a second piece of state for a case nobody will hit.
 
 **The reminder sheet's Done is untouched.** It closes the sheet rather than
 leaving a circle on screen, so there is nothing to animate.
