@@ -76,19 +76,23 @@ private val FADE_IN: FiniteAnimationSpec<Float> =
 private val FADE_OUT: FiniteAnimationSpec<Float> = tween(140, easing = FastOutLinearInEasing)
 
 /**
- * The beat between ticking a task off and its row leaving.
+ * The beat between ticking a task off and its row leaving: almost instant, but
+ * seen. [TICK_FILL] + [TICK_HOLD] is the whole wait, and it is deliberately short.
  *
- * [TICK_FILL] is the crossfade from hollow ring to filled disc and the tick's pop;
- * [TICK_HOLD] is how long the finished check sits there before the store changes.
- * Without the hold the check is a flicker inside the exit fade, and the point is
- * that the completion is legible.
+ * [TICK_FILL] is the crossfade from hollow ring to filled disc and the tick's pop.
+ * [TICK_HOLD] is only long enough for the finished check to settle before the store
+ * changes — it is not what makes the check legible. [FADE_OUT] is: the row is still
+ * drawn, check and all, for the whole of its exit, so the check is on screen for
+ * about a quarter second while the wait in front of it is half that. Lengthening
+ * the hold to "make the completion readable" would be paying twice for the same
+ * frames, which is what the first version of this did.
  *
  * [TICK_POP] overshoots on purpose. The kit expresses arrival as scale and nothing
  * else — see `pressable` — and a tick that swells straight to size reads slower
- * than one that lands.
+ * than one that lands. It earns its keep more at this duration, not less.
  */
-private const val TICK_FILL = 170
-private const val TICK_HOLD = 110
+private const val TICK_FILL = 90
+private const val TICK_HOLD = 30
 private const val TICK_FROM = 0.6f
 private val TICK_POP = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)
 

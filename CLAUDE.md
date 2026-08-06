@@ -87,7 +87,7 @@ adb shell am start -n com.wgorski.peskyreminders/.MainActivity
 
 Two tiers, and they cover different things.
 
-**Deterministic (JVM, ~12s, no device)** — `app/src/test/`, 234 tests. Robolectric hosts
+**Deterministic (JVM, ~12s, no device)** — `app/src/test/`, 236 tests. Robolectric hosts
 the real composables, and every screen takes `nowMillis` as a parameter instead of
 reading the clock, so each expected label is a fixed string. `TaskTimeTest` covers the
 date maths; `TaskListScreenTest`, `AddTaskSheetTest` and `EditTaskSheetTest` drive
@@ -370,9 +370,14 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   `.clip()`/`.background()` in the chain, or only the content scales and the
   background stays put.
 - **Ticking a task off has a beat, and the commit waits for it.** The ring fills
-  into the mint disc, the tick pops in, the check holds long enough to be read
-  (`TICK_FILL` + `TICK_HOLD`, ~280ms, in `TaskListScreen.kt`), and only then does
-  `Reminders.toggle` run and the row leave. Five things hold it together:
+  into the mint disc, the tick pops in, and the check settles — `TICK_FILL` +
+  `TICK_HOLD`, ~120ms, in `TaskListScreen.kt` — and only then does
+  `Reminders.toggle` run and the row leave. It is meant to be almost instant but
+  seen, so **don't lengthen the hold to make the check readable**: `FADE_OUT`
+  already keeps the row drawn, check and all, for the whole of its exit, so the
+  check is on screen roughly twice as long as the wait in front of it. The first
+  version of this paid for those frames twice, at 280ms, and felt sluggish. Five
+  things hold it together:
   - **The check is drawn before the store changes**, because the store change is
     what removes the row. So the tap animates before anyone knows whether the tick
     will be honoured — which is why `onToggleTask` returns a `ToggleOutcome`. Only
