@@ -385,6 +385,8 @@ class TaskListScreenTest {
 
         compose.onNodeWithTag("check-1").performClick()
         compose.waitUntil { toggled.isNotEmpty() }
+        compose.mainClock.advanceTimeBy(300) // past TICK_FILL, so a drain would have finished
+        compose.waitForIdle()
 
         assertEquals(1, checkedCircles())
     }
