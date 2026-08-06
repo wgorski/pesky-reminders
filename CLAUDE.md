@@ -87,7 +87,7 @@ adb shell am start -n com.wgorski.peskyreminders/.MainActivity
 
 Two tiers, and they cover different things.
 
-**Deterministic (JVM, ~9s, no device)** — `app/src/test/`, 227 tests. Robolectric hosts
+**Deterministic (JVM, ~12s, no device)** — `app/src/test/`, 234 tests. Robolectric hosts
 the real composables, and every screen takes `nowMillis` as a parameter instead of
 reading the clock, so each expected label is a fixed string. `TaskTimeTest` covers the
 date maths; `TaskListScreenTest`, `AddTaskSheetTest` and `EditTaskSheetTest` drive
@@ -369,6 +369,27 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   `Modifier.pressable(scale = …)` from `ui/Common.kt`, and put it **before**
   `.clip()`/`.background()` in the chain, or only the content scales and the
   background stays put.
+- **Ticking a task off has a beat, and the commit waits for it.** The ring fills
+  into the mint disc, the tick pops in, the check holds long enough to be read
+  (`TICK_FILL` + `TICK_HOLD`, ~280ms, in `TaskListScreen.kt`), and only then does
+  `Reminders.toggle` run and the row leave. Four things hold it together:
+  - **The check is drawn before the store changes**, because the store change is
+    what removes the row. So the tap animates before anyone knows whether the tick
+    will be honoured — which is why `onToggleTask` returns a `ToggleOutcome`. Only
+    `COMPLETED` keeps the check; `ADVANCED`, `NOT_DUE_YET`, `REOPENED` and
+    `MISSING` all leave the row on screen, so it drains back. Don't predict this by
+    re-deriving the not-due-yet rule in the UI — it lives in `Reminders.toggle`,
+    same as for the toast.
+  - **A second tap inside the beat is swallowed, not disabled.** A disabled
+    `clickable` installs no pointer input at all, so the tap would fall through to
+    the row and raise the editor or the action panel. The circle stays enabled and
+    its lambda no-ops while `ticking`.
+  - **`animateFloatAsState` initialises at its target**, which is the whole reason
+    a done row is still instant and a row arriving in the Done section does not
+    replay the beat it just performed.
+  - **Un-ticking has no beat, deliberately.** Removing a check is an undo, and a
+    quarter second in front of an undo is only latency. A test pins the asymmetry
+    so it does not get "fixed".
 - **An adaptive icon only ever shows the central 72dp of its 108dp canvas**, so
   artwork drawn to the full canvas comes out looking zoomed in. The bell mark
   spans 47dp, about 65% of the visible area, matching the stock icons.
