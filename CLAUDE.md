@@ -372,20 +372,30 @@ does NOT fire the delete-intent, so those clear the notification without re-post
 - **Ticking a task off has a beat, and the commit waits for it.** The ring fills
   into the mint disc, the tick pops in, the check holds long enough to be read
   (`TICK_FILL` + `TICK_HOLD`, ~280ms, in `TaskListScreen.kt`), and only then does
-  `Reminders.toggle` run and the row leave. Four things hold it together:
+  `Reminders.toggle` run and the row leave. Five things hold it together:
   - **The check is drawn before the store changes**, because the store change is
     what removes the row. So the tap animates before anyone knows whether the tick
     will be honoured — which is why `onToggleTask` returns a `ToggleOutcome`. Only
-    `COMPLETED` keeps the check; `ADVANCED`, `NOT_DUE_YET`, `REOPENED` and
-    `MISSING` all leave the row on screen, so it drains back. Don't predict this by
+    `COMPLETED` keeps the check — every other outcome either leaves the row on
+    screen or takes it away, and neither has earned one. Don't predict this by
     re-deriving the not-due-yet rule in the UI — it lives in `Reminders.toggle`,
     same as for the toast.
+  - **The pending ticks are timed above the `LazyColumn`, not inside the row.** A
+    lazy list disposes an item's subcomposition the moment it scrolls out of
+    view, which would cancel a `remember`ed flag's coroutine mid-`delay` and
+    throw the completion away — "tick the top row, then fling down the list" is
+    an ordinary gesture. `TaskListScreen` holds a `mutableStateListOf<Int>` of
+    pending ids and times the commit from there; `TaskRow` only reads whether its
+    id is in that list and asks to add it. It is `remember`, not
+    `rememberSaveable`, on purpose: restoring a pending tick across process death
+    would commit a tap made in a previous process, so a rotation inside the beat
+    still loses it — a deliberate trade, not a bug to fix later.
   - **A second tap inside the beat is swallowed, not disabled.** A disabled
-    `clickable` installs no pointer input at all, so the tap would fall through to
-    the row and raise the editor or the action panel. The repeat tap is a no-op
-    because the write is structurally equal — `true` over `true` lets Compose
-    skip the invalidation, so `LaunchedEffect(ticking)`'s key never changes;
-    `if (!ticking)` states that intent, it does not cause it.
+    `clickable` consumes nothing, so the tap would carry on up the hit path to
+    the row's own `combinedClickable` and raise the editor or the action panel.
+    The repeat tap is a no-op because adding the id is itself guarded —
+    `if (task.id !in ticked) ticked.add(task.id)` at the `TaskListScreen` call
+    site — not because the circle stops responding.
   - **`animateFloatAsState` initialises at its target**, which is the whole reason
     a done row is still instant and a row arriving in the Done section does not
     replay the beat it just performed.
