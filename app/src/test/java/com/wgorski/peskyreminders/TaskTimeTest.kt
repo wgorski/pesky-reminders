@@ -1,5 +1,6 @@
 package com.wgorski.peskyreminders
 
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -18,6 +19,11 @@ class TaskTimeTest {
      */
     @Before fun fixTimeZoneAndLocale() {
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+        Locale.setDefault(Locale.US)
+    }
+
+    /** Tests below vary the locale; restore it so later classes in the same JVM don't inherit it. */
+    @After fun restoreLocale() {
         Locale.setDefault(Locale.US)
     }
 
@@ -314,6 +320,11 @@ class TaskTimeTest {
      *
      * Checked column-by-column rather than by naming days, so the two "S" and
      * two "T" in the row cannot make a wrong rotation pass.
+     *
+     * US and UK cover no rotation and rotate-by-one; neither wraps around the end
+     * of the underlying array, which is where an off-by-one in `(first + it) % 7`
+     * would show up. `ar-EG` is CLDR's Saturday-first locale, so it exercises that
+     * wrap for real.
      */
     @Test fun the_grids_header_agrees_with_its_blanks() {
         // Sunday 1 February 2026 through Saturday the 7th — one full week.
@@ -321,7 +332,7 @@ class TaskTimeTest {
         // Far enough back that formatDay spells the weekday out ("Sun 1 Feb").
         val longAgo = at(2026, Calendar.JANUARY, 1)
 
-        listOf(Locale.US, Locale.UK).forEach { locale ->
+        listOf(Locale.US, Locale.UK, Locale("ar", "EG")).forEach { locale ->
             Locale.setDefault(locale)
             val initials = TaskTime.weekdayInitials()
             week.forEach { day ->

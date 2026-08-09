@@ -19,6 +19,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.wgorski.peskyreminders.Repeat
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Before
@@ -49,6 +50,11 @@ class AddTaskSheetTest {
      */
     @Before fun fixTimeZoneAndLocale() {
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+        Locale.setDefault(Locale.US)
+    }
+
+    /** One test below sets the locale to UK; restore it so later classes in the same JVM don't inherit it. */
+    @After fun restoreLocale() {
         Locale.setDefault(Locale.US)
     }
 
@@ -232,7 +238,7 @@ class AddTaskSheetTest {
     }
 
     /**
-     * The visible half of the week-start rule. [TaskTime] having the right
+     * The visible half of the week-start rule. TaskTime having the right
      * answer buys nothing if the grid still draws its old hardcoded literal,
      * and no other test looks at the header row at all.
      */
@@ -243,6 +249,9 @@ class AddTaskSheetTest {
 
         compose.onNodeWithTag("dow-0").assertTextEquals("M")
         compose.onNodeWithTag("dow-1").assertTextEquals("T")
+        compose.onNodeWithTag("dow-2").assertTextEquals("W")
+        compose.onNodeWithTag("dow-3").assertTextEquals("T")
+        compose.onNodeWithTag("dow-4").assertTextEquals("F")
         compose.onNodeWithTag("dow-5").assertTextEquals("S")
         compose.onNodeWithTag("dow-6").assertTextEquals("S")
     }

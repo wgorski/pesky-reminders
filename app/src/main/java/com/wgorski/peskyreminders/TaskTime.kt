@@ -253,6 +253,11 @@ object TaskTime {
      * Field arithmetic rather than a subtraction of millis: a week containing a
      * DST change is 167 or 169 hours long, and dividing that by [DAY_MILLIS]
      * could put the 1st in the wrong column.
+     *
+     * The returned count *is* the column index [monthStartMillis] falls in — so
+     * this also answers "which column is this day in" for any date, not only a
+     * month's 1st, though the name and the rest of this doc talk only about the
+     * grid's leading blanks.
      */
     fun leadingBlanks(monthStartMillis: Long): Int = cal(monthStartMillis).columnInWeek()
 

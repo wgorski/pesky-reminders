@@ -87,7 +87,7 @@ adb shell am start -n com.wgorski.peskyreminders/.MainActivity
 
 Two tiers, and they cover different things.
 
-**Deterministic (JVM, ~12s, no device)** — `app/src/test/`, 236 tests. Robolectric hosts
+**Deterministic (JVM, ~12s, no device)** — `app/src/test/`, 239 tests. Robolectric hosts
 the real composables, and every screen takes `nowMillis` as a parameter instead of
 reading the clock, so each expected label is a fixed string. `TaskTimeTest` covers the
 date maths; `TaskListScreenTest`, `AddTaskSheetTest` and `EditTaskSheetTest` drive
