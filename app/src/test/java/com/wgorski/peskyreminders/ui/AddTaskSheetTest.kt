@@ -307,10 +307,10 @@ class AddTaskSheetTest {
     @Test fun hour_steppers_move_the_time_by_an_hour() {
         showSheet()
         tap("Calendar")
-        tap("−1 hr")
+        tap("−1h")
         dueLabel().assertTextEquals("Today, 2:00 PM")
-        tap("+1 hr")
-        tap("+1 hr")
+        tap("+1h")
+        tap("+1h")
         dueLabel().assertTextEquals("Today, 4:00 PM")
     }
 
@@ -344,14 +344,27 @@ class AddTaskSheetTest {
             }
     }
 
-    @Test fun the_fifteen_minute_chip_nudges_the_time() {
+    /**
+     * The quarter-hour steps sit in the stepper row rather than among the
+     * chips, because they are relative nudges like ±1 hr and not absolute
+     * landings like the chips. Both directions are pinned: the minus one was
+     * added second and a sign slip there would be invisible on the plus side.
+     */
+    @Test fun the_quarter_hour_steppers_nudge_the_time_both_ways() {
         showSheet()
         tap("Calendar")
         tapTag("hour-chip-9")
-        tap("+15 min")
+        tap("+15m")
         dueLabel().assertTextEquals("Today, 9:15 AM")
-        tap("+15 min")
+        tap("+15m")
         dueLabel().assertTextEquals("Today, 9:30 AM")
+        tap("−15m")
+        dueLabel().assertTextEquals("Today, 9:15 AM")
+        // Twice more, so it crosses the hour it started on rather than only
+        // undoing the two steps above.
+        tap("−15m")
+        tap("−15m")
+        dueLabel().assertTextEquals("Today, 8:45 AM")
     }
 
     // ---- repeat + save ------------------------------------------------------
