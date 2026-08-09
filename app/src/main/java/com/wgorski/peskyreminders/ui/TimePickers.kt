@@ -242,10 +242,21 @@ internal fun CalendarPicker(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            listOf("Morning 9:00" to 9, "Noon" to 12, "Evening 7:00" to 19, "Night 9:00" to 21)
-                .forEach { (label, hour) ->
-                    RoundChip(label) { onCommit(TaskTime.withTimeOfDay(dueMillis, hour)) }
-                }
+            // Each chip states the time it lands on, and nothing else. The words
+            // that generated these hours — morning, noon, evening, night — go
+            // unsaid for the same reason the reminder sheet's until-chips drop
+            // theirs: once a chip reads "19:00", "evening" adds nothing.
+            //
+            // The label is formatted from the very millis the tap commits, which
+            // is what the old hand-written labels could not do: "Evening 7:00"
+            // named 19:00 in a format no other surface in the app uses.
+            listOf(9, 12, 19, 21).forEach { hour ->
+                val target = TaskTime.withTimeOfDay(dueMillis, hour)
+                RoundChip(
+                    label = TaskTime.formatTime(target, use24h),
+                    modifier = Modifier.testTag("hour-chip-$hour"),
+                ) { onCommit(target) }
+            }
             RoundChip("+15 min") { onCommit(TaskTime.shiftMinutes(dueMillis, 15)) }
         }
     }
@@ -325,9 +336,9 @@ private fun StepButton(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun RoundChip(label: String, onClick: () -> Unit) {
+private fun RoundChip(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .pressable(scale = 0.96f, onClick = onClick)
             .clip(CircleShape)
             .background(PeskyColors.Field)

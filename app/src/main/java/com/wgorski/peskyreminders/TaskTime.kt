@@ -200,7 +200,7 @@ object TaskTime {
     fun withMinute(millis: Long, minute: Int): Long =
         cal(millis).apply { set(Calendar.MINUTE, minute) }.timeInMillis
 
-    /** Snap to a whole hour of the same day — the "Morning 9:00" style chips. */
+    /** Snap to a whole hour of the same day — the calendar's time-of-day chips. */
     fun withTimeOfDay(millis: Long, hour: Int): Long = cal(millis).apply {
         set(Calendar.HOUR_OF_DAY, hour)
         set(Calendar.MINUTE, 0)

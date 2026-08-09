@@ -87,7 +87,7 @@ adb shell am start -n com.wgorski.peskyreminders/.MainActivity
 
 Two tiers, and they cover different things.
 
-**Deterministic (JVM, ~12s, no device)** — `app/src/test/`, 239 tests. Robolectric hosts
+**Deterministic (JVM, ~12s, no device)** — `app/src/test/`, 240 tests. Robolectric hosts
 the real composables, and every screen takes `nowMillis` as a parameter instead of
 reading the clock, so each expected label is a fixed string. `TaskTimeTest` covers the
 date maths; `TaskListScreenTest`, `AddTaskSheetTest` and `EditTaskSheetTest` drive
@@ -652,6 +652,17 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   "Afternoon" at 15sp very nearly fills that alone. Both chip labels come from
   `TaskTime`, so they cannot disagree with the wheel rows below about how a time is
   written, 24-hour included. Verified unclipped at font scale 1.3.
+- **The task sheet's calendar chips follow the same rule, and learned it the hard
+  way.** They used to be hand-written pairs — `"Evening 7:00" to 19` — so on a
+  24-hour device the chip said *7:00* and committed 19:00, in a format nothing else
+  in the app uses. They now read `09:00 / 12:00 / 19:00 / 21:00`, each label
+  formatted by `TaskTime.formatTime` from **the very millis the tap commits**, which
+  is the property the old literals could not have: label and action are one
+  expression, so they cannot drift. The generating words went unsaid at the same
+  time, for the reason above. Two tests pin it, one per clock format. The corollary
+  is that a chip's text can now equal the readout directly above it, so the tests
+  target `hour-chip-<hour>` tags rather than text — **don't switch them back to
+  `onNodeWithText`**, it matches two nodes the moment a chip is tapped.
 - **Both chip rows share one "Snooze" label.** They are one choice offered two ways —
   how long from now, or what time to land on. "Snooze for" cannot cover the second
   row (*snooze for 20:00* is wrong), which is what forces the neutral single label
