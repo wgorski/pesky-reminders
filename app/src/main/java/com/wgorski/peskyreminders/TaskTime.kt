@@ -245,9 +245,33 @@ object TaskTime {
     fun daysInMonth(monthStartMillis: Long): Int =
         cal(monthStartMillis).getActualMaximum(Calendar.DAY_OF_MONTH)
 
-    /** Blank cells before the 1st, with Sunday as the first column. */
-    fun leadingBlanks(monthStartMillis: Long): Int =
-        cal(monthStartMillis).get(Calendar.DAY_OF_WEEK) - 1
+    /**
+     * Blank cells before the 1st, counted from the locale's first day of week —
+     * the same day [startOfWeek] cuts on, so the grid and the list's THIS WEEK /
+     * NEXT WEEK bands agree about where a week begins.
+     *
+     * Field arithmetic rather than a subtraction of millis: a week containing a
+     * DST change is 167 or 169 hours long, and dividing that by [DAY_MILLIS]
+     * could put the 1st in the wrong column.
+     */
+    fun leadingBlanks(monthStartMillis: Long): Int = cal(monthStartMillis).columnInWeek()
+
+    /**
+     * The grid's seven column headers, rotated so the first is the locale's
+     * first day of week.
+     *
+     * This is the header's only source, which is what stops the letters
+     * disagreeing with [leadingBlanks] about which day leads — the same
+     * reasoning that has the snooze chip labels come from here rather than
+     * being written out at the call site. Shares [WEEKDAYS] with [formatDay].
+     *
+     * English initials, merely rotated: [WEEKDAYS] is English and localising
+     * day names is a separate job.
+     */
+    fun weekdayInitials(): List<String> {
+        val first = Calendar.getInstance().firstDayOfWeek - 1
+        return List(7) { WEEKDAYS[(first + it) % 7].take(1) }
+    }
 
     // ---- internals ----------------------------------------------------------
 
@@ -259,12 +283,15 @@ object TaskTime {
      *
      * Takes the first day from the locale via [Calendar.getFirstDayOfWeek] — Sunday
      * in the US, Monday across most of Europe — because "this week" is a claim about
-     * the user's calendar, not ours. Note the month grid in the task sheet is still
-     * hardcoded Sunday-first; the two can disagree.
+     * the user's calendar, not ours. The month grid asks the same question through
+     * [leadingBlanks] and [weekdayInitials], so the two cannot disagree.
      */
     private fun startOfWeek(millis: Long): Long = cal(millis).atMidnight().apply {
-        add(Calendar.DAY_OF_MONTH, -((get(Calendar.DAY_OF_WEEK) - firstDayOfWeek + 7) % 7))
+        add(Calendar.DAY_OF_MONTH, -columnInWeek())
     }.timeInMillis
+
+    /** How many columns [this] sits past the locale's first day of the week. */
+    private fun Calendar.columnInWeek(): Int = (get(Calendar.DAY_OF_WEEK) - firstDayOfWeek + 7) % 7
 
     private fun Calendar.atMidnight(): Calendar = apply {
         set(Calendar.HOUR_OF_DAY, 0)
