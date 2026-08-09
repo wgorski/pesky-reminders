@@ -70,11 +70,11 @@ class AddTaskSheetTest {
     private var savedRepeat: Repeat? = null
     private var dismissed = false
 
-    private fun showSheet() {
+    private fun showSheet(use24h: Boolean = false) {
         compose.setContent {
             AddTaskSheet(
                 nowMillis = now,
-                use24h = false,
+                use24h = use24h,
                 onDismiss = { dismissed = true },
                 onSave = { name, due, repeat ->
                     savedName = name; savedDue = due; savedRepeat = repeat
@@ -316,23 +316,38 @@ class AddTaskSheetTest {
 
     @Test fun time_of_day_chips_snap_to_their_hour() {
         val expected = listOf(
-            "Morning 9:00" to "Today, 9:00 AM",
-            "Noon" to "Today, 12:00 PM",
-            "Evening 7:00" to "Today, 7:00 PM",
-            "Night 9:00" to "Today, 9:00 PM",
+            9 to "Today, 9:00 AM",
+            12 to "Today, 12:00 PM",
+            19 to "Today, 7:00 PM",
+            21 to "Today, 9:00 PM",
         )
         showSheet()
         tap("Calendar")
-        expected.forEach { (chip, label) ->
-            tap(chip)
+        expected.forEach { (hour, label) ->
+            tapTag("hour-chip-$hour")
             dueLabel().assertTextEquals(label)
         }
+    }
+
+    /**
+     * The chips used to write their hour out by hand — "Evening 7:00" — so on a
+     * 24-hour device they named 19:00 in a format nothing else in the app uses.
+     * The label now comes from the very millis the tap commits, so it cannot
+     * disagree with either the readout above it or the row it will produce.
+     */
+    @Test fun time_of_day_chips_are_written_in_the_clock_format() {
+        showSheet(use24h = true)
+        tap("Calendar")
+        listOf(9 to "09:00", 12 to "12:00", 19 to "19:00", 21 to "21:00")
+            .forEach { (hour, text) ->
+                compose.onNodeWithTag("hour-chip-$hour").assertTextEquals(text)
+            }
     }
 
     @Test fun the_fifteen_minute_chip_nudges_the_time() {
         showSheet()
         tap("Calendar")
-        tap("Morning 9:00")
+        tapTag("hour-chip-9")
         tap("+15 min")
         dueLabel().assertTextEquals("Today, 9:15 AM")
         tap("+15 min")
