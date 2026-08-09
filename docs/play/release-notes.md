@@ -77,6 +77,21 @@ Every other snooze is still a tap on the notification itself. Those rows now lea
 
 ---
 
+## 0.25.0 — en-GB
+
+348 of 500 characters. Covers everything since 0.20.0, the last bundle staged
+for Play — 0.21.0 to 0.24.0 never went up, so their changes ship here.
+
+```
+Ticking a task off has a beat now: the ring fills, the check lands, and the row leaves.
+
+The calendar starts the week where your phone does, so it lines up with the This week and Next week bands in the list.
+
+Its time shortcuts read in your clock's own format — 19:00 rather than 7:00 — and the row above them steps both ways: −1h, −15m, +15m, +1h.
+```
+
+---
+
 ## Format for later releases
 
 Describe what changed for the user, not what changed in the code. The list rows
