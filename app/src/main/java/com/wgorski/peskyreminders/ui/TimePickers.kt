@@ -225,7 +225,16 @@ internal fun CalendarPicker(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            StepButton("−1 hr") { onCommit(TaskTime.shiftHours(dueMillis, -1)) }
+            // Every relative nudge sits here, symmetric about the readout it
+            // moves: hours outside, quarter-hours inside, so the step grows
+            // outward from the time. The chips below are absolute landings —
+            // a different job, and their own row.
+            //
+            // The symmetry is also what keeps the readout on the sheet's centre
+            // line: equal content either side, so `weight(1f)` centres it for
+            // real rather than within a lopsided gap.
+            StepButton("−1h") { onCommit(TaskTime.shiftHours(dueMillis, -1)) }
+            StepButton("−15m") { onCommit(TaskTime.shiftMinutes(dueMillis, -15)) }
             Text(
                 TaskTime.formatTime(dueMillis, use24h),
                 modifier = Modifier.weight(1f),
@@ -234,8 +243,16 @@ internal fun CalendarPicker(
                 fontWeight = FontWeight.Bold,
                 color = PeskyColors.Text,
                 textAlign = TextAlign.Center,
+                // Four buttons squeeze this slot, and at font scale 1.3 the
+                // labels were long enough that "10:00" broke into "10:" / "00".
+                // Shortening them bought the room back; this is the guard that
+                // makes a future label creeping longer fail loudly rather than
+                // silently splitting the readout in half.
+                maxLines = 1,
+                softWrap = false,
             )
-            StepButton("+1 hr") { onCommit(TaskTime.shiftHours(dueMillis, 1)) }
+            StepButton("+15m") { onCommit(TaskTime.shiftMinutes(dueMillis, 15)) }
+            StepButton("+1h") { onCommit(TaskTime.shiftHours(dueMillis, 1)) }
         }
 
         FlowRow(
@@ -257,7 +274,6 @@ internal fun CalendarPicker(
                     modifier = Modifier.testTag("hour-chip-$hour"),
                 ) { onCommit(target) }
             }
-            RoundChip("+15 min") { onCommit(TaskTime.shiftMinutes(dueMillis, 15)) }
         }
     }
 }

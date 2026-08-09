@@ -663,6 +663,17 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   is that a chip's text can now equal the readout directly above it, so the tests
   target `hour-chip-<hour>` tags rather than text — **don't switch them back to
   `onNodeWithText`**, it matches two nodes the moment a chip is tapped.
+- **Relative nudges live in the stepper row, absolute landings in the chips.** The
+  row is `−1h │ −15m │ readout │ +15m │ +1h`, symmetric on purpose: equal content
+  either side is what puts the readout on the sheet's centre line, since its
+  `weight(1f)` otherwise just centres it inside a lopsided gap. `+15 min` used to
+  sit among the chips, which put a relative move in a row of absolute ones and
+  cost the chip row a wrap on narrow phones. **Five things in that row is the
+  ceiling**: at 440dpi and font scale 1.3 the full labels ("−15 min") squeezed the
+  readout until `10:00` broke into `10:` / `00`, which is why the labels are
+  compact and the readout carries `maxLines = 1, softWrap = false` — a longer
+  label now fails visibly instead of quietly halving the time. Check any change
+  here at 440dpi × 1.3, not just at the default.
 - **Both chip rows share one "Snooze" label.** They are one choice offered two ways —
   how long from now, or what time to land on. "Snooze for" cannot cover the second
   row (*snooze for 20:00* is wrong), which is what forces the neutral single label
