@@ -175,10 +175,15 @@ internal fun CalendarPicker(
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            listOf("S", "M", "T", "W", "T", "F", "S").forEachIndexed { index, dow ->
+            // Rotated to the locale's first day, from the same source the blank
+            // count comes from — the letter and the column cannot disagree.
+            TaskTime.weekdayInitials().forEachIndexed { index, dow ->
                 Text(
                     dow,
-                    modifier = Modifier.weight(1f).padding(vertical = 4.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("dow-$index")
+                        .padding(vertical = 4.dp),
                     fontFamily = DmSans,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,

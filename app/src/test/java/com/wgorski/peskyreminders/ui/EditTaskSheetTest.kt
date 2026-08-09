@@ -29,6 +29,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import java.util.Calendar
+import java.util.Locale
 import java.util.TimeZone
 
 /**
@@ -50,8 +51,13 @@ class EditTaskSheetTest {
 
     @get:Rule val compose = createComposeRule()
 
-    @Before fun fixTimeZone() {
+    /**
+     * Pin the zone so every label below is a fixed string, and the locale
+     * because the calendar grid asks it which day a week starts on.
+     */
+    @Before fun fixTimeZoneAndLocale() {
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+        Locale.setDefault(Locale.US)
     }
 
     private fun at(year: Int, month: Int, day: Int, hour: Int, minute: Int = 0): Long =

@@ -27,6 +27,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import java.util.Calendar
+import java.util.Locale
 import java.util.TimeZone
 
 /**
@@ -42,8 +43,13 @@ class AddTaskSheetTest {
 
     @get:Rule val compose = createComposeRule()
 
-    @Before fun fixTimeZone() {
+    /**
+     * Pin the zone so every label below is a fixed string, and the locale
+     * because the calendar grid asks it which day a week starts on.
+     */
+    @Before fun fixTimeZoneAndLocale() {
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+        Locale.setDefault(Locale.US)
     }
 
     /** Saturday 25 July 2026, 14:20 UTC. */
@@ -223,6 +229,22 @@ class AddTaskSheetTest {
         tap("Quick pick")
         compose.onNodeWithText("DAY").assertExists()
         compose.onNodeWithText("July 2026").assertDoesNotExist()
+    }
+
+    /**
+     * The visible half of the week-start rule. [TaskTime] having the right
+     * answer buys nothing if the grid still draws its old hardcoded literal,
+     * and no other test looks at the header row at all.
+     */
+    @Test fun the_calendar_header_starts_on_the_locales_first_day() {
+        Locale.setDefault(Locale.UK)
+        showSheet()
+        tap("Calendar")
+
+        compose.onNodeWithTag("dow-0").assertTextEquals("M")
+        compose.onNodeWithTag("dow-1").assertTextEquals("T")
+        compose.onNodeWithTag("dow-5").assertTextEquals("S")
+        compose.onNodeWithTag("dow-6").assertTextEquals("S")
     }
 
     // ---- wheels -------------------------------------------------------------
