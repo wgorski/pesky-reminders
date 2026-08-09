@@ -87,7 +87,7 @@ adb shell am start -n com.wgorski.peskyreminders/.MainActivity
 
 Two tiers, and they cover different things.
 
-**Deterministic (JVM, ~12s, no device)** — `app/src/test/`, 236 tests. Robolectric hosts
+**Deterministic (JVM, ~12s, no device)** — `app/src/test/`, 239 tests. Robolectric hosts
 the real composables, and every screen takes `nowMillis` as a parameter instead of
 reading the clock, so each expected label is a fixed string. `TaskTimeTest` covers the
 date maths; `TaskListScreenTest`, `AddTaskSheetTest` and `EditTaskSheetTest` drive
@@ -565,11 +565,17 @@ does NOT fire the delete-intent, so those clear the notification without re-post
   moment it is late; TODAY and TOMORROW are tested *before* the weeks, which is what
   stops a Saturday's Sunday being filed under NEXT WEEK; and THIS WEEK is legitimately
   empty on the last day of a week, since everything left is today or tomorrow.
-- **Week boundaries follow the locale, not our calendar grid.** `startOfWeek` asks
+- **Week boundaries follow the locale, the month grid included.** `startOfWeek` asks
   `Calendar.getFirstDayOfWeek()` — Sunday in the US, Monday across most of Europe —
-  because "this week" is a claim about the user's calendar. The month grid in the task
-  sheet is still hardcoded Sunday-first, so **the two can disagree**; unify them if it
-  ever shows. Tests that touch banding must pin `Locale` as well as `TimeZone`.
+  because "this week" is a claim about the user's calendar. The grid asks the same
+  question through `leadingBlanks` and `weekdayInitials`, which is what keeps the
+  column the 1st lands in, and the letter drawn above it, agreeing with the list's
+  THIS WEEK / NEXT WEEK bands. The two used to disagree — the grid was hardcoded
+  Sunday-first in two independent spots, a literal header row and a `DAY_OF_WEEK - 1`
+  blank count — so **anything new that reasons about a week has to go through one of
+  those two functions**, not a third copy. Tests that touch banding *or the grid* must
+  pin `Locale` as well as `TimeZone`; `AddTaskSheetTest` and `EditTaskSheetTest` both
+  do, because both host the grid.
 - **Keep `dueMillis` meaning "when it fires".** The anchor was added *beside* it
   rather than by turning `dueMillis` into the slot, precisely so every existing
   consumer — the list's sections and sort, the notification text, the scheduler —

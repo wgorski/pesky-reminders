@@ -1,5 +1,6 @@
 package com.wgorski.peskyreminders
 
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -18,6 +19,11 @@ class TaskTimeTest {
      */
     @Before fun fixTimeZoneAndLocale() {
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+        Locale.setDefault(Locale.US)
+    }
+
+    /** Tests below vary the locale; restore it so later classes in the same JVM don't inherit it. */
+    @After fun restoreLocale() {
         Locale.setDefault(Locale.US)
     }
 
@@ -289,6 +295,55 @@ class TaskTimeTest {
         val september = TaskTime.monthStart(now, 2)
         assertEquals("September 2026", TaskTime.monthTitle(september))
         assertEquals(30, TaskTime.daysInMonth(september))
+    }
+
+    @Test fun the_grid_starts_on_the_locales_first_day_of_the_week() {
+        val august = TaskTime.monthStart(now, 1)
+
+        // 1 August 2026 is a Saturday. US weeks open on Sunday, so it is the
+        // seventh column — six blanks before it.
+        Locale.setDefault(Locale.US)
+        assertEquals(6, TaskTime.leadingBlanks(august))
+        assertEquals(listOf("S", "M", "T", "W", "T", "F", "S"), TaskTime.weekdayInitials())
+
+        // UK weeks open on Monday, so the same Saturday moves one column left.
+        Locale.setDefault(Locale.UK)
+        assertEquals(5, TaskTime.leadingBlanks(august))
+        assertEquals(listOf("M", "T", "W", "T", "F", "S", "S"), TaskTime.weekdayInitials())
+    }
+
+    /**
+     * The header letters and the blank count are two halves of one claim, and a
+     * later edit could rotate one without the other. Pin them against each
+     * other across a whole week: a day's blank count *is* the column it lands
+     * in, so the header letter above that column must be that day's own initial.
+     *
+     * Checked column-by-column rather than by naming days, so the two "S" and
+     * two "T" in the row cannot make a wrong rotation pass.
+     *
+     * US and UK cover no rotation and rotate-by-one; neither wraps around the end
+     * of the underlying array, which is where an off-by-one in `(first + it) % 7`
+     * would show up. `ar-EG` is CLDR's Saturday-first locale, so it exercises that
+     * wrap for real.
+     */
+    @Test fun the_grids_header_agrees_with_its_blanks() {
+        // Sunday 1 February 2026 through Saturday the 7th — one full week.
+        val week = (0..6).map { at(2026, Calendar.FEBRUARY, 1 + it) }
+        // Far enough back that formatDay spells the weekday out ("Sun 1 Feb").
+        val longAgo = at(2026, Calendar.JANUARY, 1)
+
+        listOf(Locale.US, Locale.UK, Locale("ar", "EG")).forEach { locale ->
+            Locale.setDefault(locale)
+            val initials = TaskTime.weekdayInitials()
+            week.forEach { day ->
+                val expected = TaskTime.formatDay(day, longAgo).take(1)
+                assertEquals(
+                    "$locale, day $day",
+                    expected,
+                    initials[TaskTime.leadingBlanks(day)],
+                )
+            }
+        }
     }
 
     /**
