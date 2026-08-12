@@ -260,10 +260,25 @@ than to the code. Keep the character count line above each block — the field c
 at 500 per language and the same text runs ~10% longer in Polish.
 
 ```bash
-# The Play artifact. Signed with the upload key, version-named.
-./gradlew :app:stageReleaseBundle
-# -> app/build/outputs/bundle/play/pesky-reminders-$V.aab
+# Build the Play artifact AND run every gate that can be checked locally.
+# Don't call stageReleaseBundle by hand — this wraps it and verifies the result.
+.claude/skills/release/stage-play-bundle.sh
+# -> app/build/outputs/bundle/play/pesky-reminders-$V.aab   (upload key, version-named)
 ```
+
+**Never verify a Play bundle by hand.** Every check is in that script and each one
+FAILs loudly with a non-zero exit: the signer is the upload key and not the debug
+one, the certificate outlives Play's 22 Oct 2033 floor, the sibling APK *is*
+debug-signed, the bundle's protobuf manifest agrees with `build.gradle.kts` on
+version and package, `targetSdk` clears Play's floor, `INTERNET` is absent (the
+Data safety answer rests on it), the exact-alarm pair is declared with
+`SCHEDULE_EXACT_ALARM` capped at 32, the graphics are the right size with no alpha,
+the privacy policy URL answers 200, and `release-notes.md` has a section for this
+version inside 500 characters. It finishes by naming the file to upload and the
+same-version APK that must not be. `--install` additionally proves the bundle
+installs, and is opt-in because it has to uninstall the sideloaded build first —
+task list included. Details and two signing gotchas in
+`.claude/skills/release/SKILL.md`.
 
 The upload key lives at `~/.pesky-keys/pesky-upload.jks`, **outside the repo** so
 it cannot be committed; `keystore.properties` (gitignored) points at it. Signing

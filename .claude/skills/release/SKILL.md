@@ -69,6 +69,50 @@ runs the helper script for the mechanical build-and-publish tail.
 
 7. **Report the release URL** that `gh` prints back to the user.
 
+## The Play bundle is a different script — and a different key
+
+A GitHub release and a Play upload are two channels with two signatures. Never
+hand-verify either one; both scripts do it and both refuse to continue if the
+signature is wrong.
+
+```bash
+.claude/skills/release/stage-play-bundle.sh            # build + every offline gate
+.claude/skills/release/stage-play-bundle.sh --install  # ALSO install it (destructive, see below)
+```
+
+It builds `:app:stageReleaseBundle` (upload key — **never** `-PuseDebugSigning`)
+and then checks, in order: the signer is not the debug key and the certificate
+outlives Play's 22 Oct 2033 floor; the sibling APK *is* debug-signed; the bundle's
+protobuf manifest agrees with `build.gradle.kts` on versionName/versionCode and
+carries the right package, `targetSdk` ≥ Play's floor and `minSdk`; `INTERNET` is
+absent (the Data safety answer depends on it) and the exact-alarm pair is declared
+with `SCHEDULE_EXACT_ALARM` capped at 32; the store icon and feature graphic are
+the right size with no alpha and there are 4+ screenshots at 9:16 or 16:9; the
+privacy policy URL returns 200; and `release-notes.md` has a section for this
+version inside the 500-character cap. It ends by naming the file to upload and the
+same-version APK that must **not** be.
+
+Anything that would get the upload rejected, or that silently contradicts a claim
+made in `LISTING.md`, is a `FAIL` and exits non-zero. The two warnings it always
+prints — no deobfuscation file, and native symbols for the stripped AndroidX
+`.so` files — are explained in place so nobody chases them.
+
+`--install` is **opt-in because it is destructive**: it generates split APKs with
+`bundletool` and installs them, which means uninstalling the sideloaded
+debug-signed build first, taking the task list with it. Verification should not
+do that as a side effect.
+
+Two things learned building it, worth not rediscovering:
+
+- **`keytool -printcert -jarfile` reads an AAB but not a modern APK.** Bundles are
+  JAR-signed; APKs use signature scheme v2/v3 with no `META-INF/*.RSA`, so keytool
+  reports nothing and a naive check would read "unsigned". The APK side uses
+  `apksigner verify --print-certs` for that reason.
+- **The realistic route to a debug-signed bundle is a missing
+  `keystore.properties`**, not a stray flag — the signing config falls back to the
+  debug key so a fresh clone still builds. Verified by hiding the file: the script
+  fails with exactly that diagnosis and exits 1.
+
 ## Quick reference
 
 | Thing | Value |
