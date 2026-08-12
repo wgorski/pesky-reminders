@@ -53,9 +53,19 @@ runs the helper script for the mechanical build-and-publish tail.
    ```
    It exports the Android SDK env, derives the version/tag from
    `app/build.gradle.kts`, refuses to overwrite an existing release, runs
-   `./gradlew :app:assembleRelease`, verifies the APK exists, and creates the
-   release on `master` with the APK attached. The release title becomes
-   `vX.Y.Z — <short title>`.
+   `./gradlew :app:assembleRelease -PuseDebugSigning`, **verifies the APK really is
+   debug-signed**, and creates the release on `master` with the APK attached. The
+   release title becomes `vX.Y.Z — <short title>`.
+
+   **Why the flag and the check.** A GitHub release APK exists to be sideloaded.
+   Once `keystore.properties` is present, a plain `assembleRelease` signs with the
+   **upload** key, and Android refuses to install that over an existing
+   debug-signed copy — `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, and the uninstall it
+   forces takes the user's task list with it. It would also make the "signed with
+   the debug key" line in the notes false. The script reads the signer's
+   certificate CN back out of the finished APK and aborts if it isn't
+   `Android Debug`, so the notes cannot drift from the artifact. The upload key
+   belongs to the Play bundle alone (`:app:stageReleaseBundle`).
 
 7. **Report the release URL** that `gh` prints back to the user.
 

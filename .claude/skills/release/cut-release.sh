@@ -40,11 +40,31 @@ if [ "$BRANCH" != "master" ]; then
 fi
 
 echo ">> Building release APK for $TAG ..."
-./gradlew :app:assembleRelease
+# -PuseDebugSigning is REQUIRED, not optional. A GitHub release APK exists to be
+# sideloaded, and once keystore.properties is present a plain assembleRelease
+# signs with the *upload* key instead — which Android refuses to install over an
+# existing debug-signed copy (INSTALL_FAILED_UPDATE_INCOMPATIBLE), forcing an
+# uninstall that takes the user's task list with it. It would also make the
+# "signed with the debug key" line in every release note a lie. The upload key
+# belongs to the Play bundle alone: :app:stageReleaseBundle.
+./gradlew :app:assembleRelease -PuseDebugSigning
 
 APK="app/build/outputs/apk/release/pesky-reminders-${VERSION}.apk"
 [ -f "$APK" ] || { echo "ERROR: expected artifact not found: $APK" >&2; exit 1; }
 echo ">> Built $APK ($(du -h "$APK" | cut -f1))"
+
+# Prove the claim the notes make, rather than trusting the flag. The debug
+# keystore's certificate is the well-known "Android Debug" CN; an upload-signed
+# APK is not.
+SIGNER_CN="$("$ANDROID_HOME"/build-tools/35.0.0/apksigner verify --print-certs "$APK" 2>/dev/null \
+  | awk -F'CN=' '/Signer #1 certificate DN/{print $2}')"
+case "$SIGNER_CN" in
+  "Android Debug"*) echo ">> Signed with the debug key — sideloadable. ($SIGNER_CN)" ;;
+  "")               echo "WARNING: could not read the signer certificate; check it by hand." >&2 ;;
+  *)                echo "ERROR: $APK is signed by '$SIGNER_CN', not the debug key." >&2
+                    echo "       It would not install over an existing sideloaded build." >&2
+                    exit 1 ;;
+esac
 
 echo ">> Creating GitHub release $TAG ..."
 gh release create "$TAG" \
