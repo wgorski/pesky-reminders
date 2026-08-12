@@ -4,9 +4,9 @@ A reminder app for things you keep not doing.
 
 Every other app puts a notification on your lock screen, you flick it away without
 reading it, and the thing stays undone. Pesky won't let you. Its notification cannot
-be swiped away, cannot be cleared, and comes straight back if you try. The only ways
-out are its own two buttons — **Snooze 15 min** and **Done**, one tap each — or the
-sheet a tap on its body opens, where every other snooze lives.
+be cleared, and swiping it away buys you five minutes rather than getting rid of it.
+The only ways out are its own two buttons — **Snooze 15 min** and **Done**, one tap
+each — or the sheet a tap on its body opens, where every other snooze lives.
 
 <img src="docs/screenshots/task-list.png" width="300" alt="The Pesky task list, banded by when things are due">
 
@@ -16,9 +16,13 @@ sheet a tap on its body opens, where every other snooze lives.
 
 It arrives like any other notification — and then it stays.
 
-- **Swipe it away** and it reappears immediately, in the same place, with the same
-  two actions — and this time without a sound or a buzz. It came back; that is the
-  whole statement, and answering a swipe with a chime reads as the app arguing.
+- **Swipe it away** and it comes back in **five minutes**, with a toast on the way
+  out saying when — "Nice try — snoozed until 12:08 PM." The swipe is the one
+  gesture the app answers in words rather than in kind: it does not chime or buzz
+  about it, since a swipe met with a noise reads as the app arguing, but the
+  notification no longer reappears to speak for itself, so something has to say
+  where it went. Five minutes is a default; change it in Settings, anywhere from
+  1 to 180.
 - **Clear all** skips it. So does clearing from the lock screen.
 - If you leave it sitting there it **buzzes again every 5 minutes** until you deal
   with it. (You can change the interval, or switch the nagging off — see Settings.)
@@ -133,11 +137,16 @@ them off and clear the done list instead.
 
 ## Settings
 
-The sliders icon in the header opens one sheet. **Keep buzzing** is what makes a
-reminder you're ignoring buzz again rather than sit there quietly; it's on by
-default, every 5 minutes, and the interval takes anything from 1 to 180 minutes.
-Turn it off and the notification still won't go away — it just stops making noise
-about it.
+The sliders icon in the header opens one sheet, with two things to tune.
+
+**Keep buzzing** is what makes a reminder you're ignoring buzz again rather than sit
+there quietly; it's on by default, every 5 minutes, and the interval takes anything
+from 1 to 180 minutes. Turn it off and the notification still won't go away — it just
+stops making noise about it.
+
+**Snooze for** is how long a swipe hides a reminder: 5 minutes by default, again
+anything from 1 to 180. There's no switch beside it, because a swipe always snoozes
+now — set it to 1 if you want it back almost as fast as it used to come.
 
 ## Things worth knowing
 
@@ -168,8 +177,9 @@ Android 8.0 or newer.
 ```
 
 The interesting test is `ReminderModelTest`: it fires the notification's *own*
-delete-intent — exactly what Android sends when you swipe — and asserts the
-notification comes back. Proof that the whole premise holds is in
+delete-intent — exactly what Android sends when you swipe — and asserts that the
+reminder is pushed forward rather than got rid of. Proof that the whole premise
+holds is in
 [`docs/verification/VERIFICATION.md`](docs/verification/VERIFICATION.md); the design
 and the plan behind the app are in [`docs/`](docs/), and
 [`CLAUDE.md`](CLAUDE.md) covers how the code is put together.

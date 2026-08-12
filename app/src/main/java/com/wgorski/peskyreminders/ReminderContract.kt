@@ -38,7 +38,26 @@ object ReminderContract {
      * the sheet of durations is a separate route and still has to be an activity.
      */
     const val ACTION_SNOOZE = "com.wgorski.peskyreminders.SNOOZE"
-    const val ACTION_REPOST = "com.wgorski.peskyreminders.REPOST"
+
+    /**
+     * The notification's delete-intent — what the OS sends when it is swiped away.
+     *
+     * It **snoozes** now, for [Settings.swipeSnoozeMinutes], rather than putting the
+     * notification straight back. Named for the gesture rather than the response,
+     * because it was `REPOST` for as long as re-posting was the response and a
+     * broadcast whose name contradicts its branch is the kind of lie that survives
+     * for years. [Reminders.repost] itself is unchanged and still has two callers;
+     * it is only unreachable *by broadcast*.
+     *
+     * The rename costs one narrow window: a notification posted before an app
+     * update holds a PendingIntent carrying the old action string, so a swipe in
+     * that window clears the notification and matches no branch, losing the snooze.
+     * [BootReceiver] handles `MY_PACKAGE_REPLACED` and [Reminders.restoreAll]
+     * re-posts every overdue task immediately, which replaces the notification and
+     * its delete-intent — so the window is the seconds between install and that
+     * broadcast, and no compatibility branch is kept for it.
+     */
+    const val ACTION_SWIPED = "com.wgorski.peskyreminders.SWIPED"
     const val ACTION_NAG = "com.wgorski.peskyreminders.NAG"
 
     const val EXTRA_TASK_ID = "extra_task_id"
@@ -59,7 +78,9 @@ object ReminderContract {
     fun notificationId(taskId: Int): Int = taskId
 
     const val SLOT_FIRE = 1
-    const val SLOT_REPOST = 2
+
+    /** Value unchanged from when it was `SLOT_REPOST`, so no request code moves. */
+    const val SLOT_SWIPED = 2
     const val SLOT_SNOOZE = 3
     const val SLOT_DONE = 4
     const val SLOT_NAG = 5

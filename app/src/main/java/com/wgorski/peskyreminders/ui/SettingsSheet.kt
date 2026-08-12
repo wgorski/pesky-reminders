@@ -46,19 +46,22 @@ import com.wgorski.peskyreminders.Settings
 private val R12 = RoundedCornerShape(12.dp)
 
 /**
- * Settings. Currently one thing to tune: whether an ignored reminder keeps
- * buzzing, and how often.
+ * Settings. Two things to tune, one per block: whether an ignored reminder keeps
+ * buzzing and how often, and how long swiping one away hides it for.
  */
 @Composable
 fun SettingsSheet(
     nagEnabled: Boolean,
     nagMinutes: Int,
+    swipeSnoozeMinutes: Int,
     onNagEnabled: (Boolean) -> Unit,
     onNagMinutes: (Int) -> Unit,
+    onSwipeSnoozeMinutes: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    // Held here, not in the row, so dismissing the sheet can still commit a
-    // half-typed value ("999" -> clamped to 180) on the way out.
+    // Both drafts are held here, not in the rows, so dismissing the sheet can
+    // still commit a half-typed value ("999" -> clamped to 180) on the way out —
+    // and so the two fields cannot end up sharing one.
     var minutesText by remember(nagMinutes) { mutableStateOf(nagMinutes.toString()) }
     val commitMinutes = {
         val safe = Settings.coerceMinutes(minutesText.toIntOrNull() ?: nagMinutes)
@@ -66,9 +69,21 @@ fun SettingsSheet(
         onNagMinutes(safe)
     }
 
+    var swipeText by remember(swipeSnoozeMinutes) {
+        mutableStateOf(swipeSnoozeMinutes.toString())
+    }
+    val commitSwipe = {
+        val safe = Settings.coerceSwipeSnoozeMinutes(
+            swipeText.toIntOrNull() ?: swipeSnoozeMinutes
+        )
+        swipeText = safe.toString()
+        onSwipeSnoozeMinutes(safe)
+    }
+
     PeskySheet(
         title = "Settings",
-        onDismiss = { commitMinutes(); onDismiss() },
+        // Both, or closing the sheet would clamp one field and drop the other.
+        onDismiss = { commitMinutes(); commitSwipe(); onDismiss() },
         bodySpacing = 20.dp,
     ) {
         Text("NAGGING", style = PeskyType.SectionLabel, color = PeskyColors.TextMuted)
@@ -100,31 +115,82 @@ fun SettingsSheet(
         }
 
         MinutesRow(
+            lead = "Every",
+            tag = "nag-minutes",
+            min = Settings.MIN_NAG_MINUTES,
+            max = Settings.MAX_NAG_MINUTES,
             enabled = nagEnabled,
             minutes = nagMinutes,
             text = minutesText,
-            onText = { typed ->
-                // Digits only, short enough that it cannot overflow an Int.
-                minutesText = typed.filter(Char::isDigit).take(3)
-                // Commit as soon as what is typed is usable, so the value is
-                // never lost just because focus was never given up. Anything
-                // out of range waits for the clamp on Done or dismiss.
-                minutesText.toIntOrNull()
-                    ?.takeIf { it in Settings.MIN_NAG_MINUTES..Settings.MAX_NAG_MINUTES }
-                    ?.let(onNagMinutes)
-            },
+            onText = { typed -> onMinutesTyped(typed, Settings.MIN_NAG_MINUTES,
+                Settings.MAX_NAG_MINUTES, { minutesText = it }, onNagMinutes) },
             onCommit = commitMinutes,
+        )
+
+        Text("SWIPING", style = PeskyType.SectionLabel, color = PeskyColors.TextMuted)
+
+        Text(
+            "Swiping a reminder away pushes it back by this long instead of " +
+                "bringing it straight back.",
+            style = PeskyType.Body,
+            lineHeight = 18.sp,
+        )
+
+        // No switch beside it: the behaviour is unconditional, so there is
+        // nothing to turn off — and therefore nothing that could grey this out.
+        MinutesRow(
+            lead = "Snooze for",
+            tag = "swipe-minutes",
+            min = Settings.MIN_SWIPE_SNOOZE_MINUTES,
+            max = Settings.MAX_SWIPE_SNOOZE_MINUTES,
+            minutes = swipeSnoozeMinutes,
+            text = swipeText,
+            onText = { typed -> onMinutesTyped(typed, Settings.MIN_SWIPE_SNOOZE_MINUTES,
+                Settings.MAX_SWIPE_SNOOZE_MINUTES, { swipeText = it }, onSwipeSnoozeMinutes) },
+            onCommit = commitSwipe,
         )
     }
 }
 
+/**
+ * What both fields do on a keystroke.
+ *
+ * Digits only, short enough that it cannot overflow an Int, and **committed as
+ * soon as what is typed is usable** — hiding the keyboard does not clear Compose
+ * focus, so waiting for focus loss silently drops the value. Anything out of
+ * range waits for the clamp on Done or dismiss.
+ */
+private fun onMinutesTyped(
+    typed: String,
+    min: Int,
+    max: Int,
+    onDraft: (String) -> Unit,
+    onCommit: (Int) -> Unit,
+) {
+    val digits = typed.filter(Char::isDigit).take(3)
+    onDraft(digits)
+    digits.toIntOrNull()?.takeIf { it in min..max }?.let(onCommit)
+}
+
+/**
+ * A clamping numeric field with a word in front of it and its range spelled out
+ * underneath.
+ *
+ * Shared by both blocks rather than copied. It carries the *never lose a typed
+ * value on focus alone* fix — see [onMinutesTyped] — and a second copy would
+ * drift from it at the first change to either.
+ */
 @Composable
 private fun MinutesRow(
-    enabled: Boolean,
+    lead: String,
+    tag: String,
+    min: Int,
+    max: Int,
     minutes: Int,
     text: String,
     onText: (String) -> Unit,
     onCommit: () -> Unit,
+    enabled: Boolean = true,
 ) {
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -134,7 +200,7 @@ private fun MinutesRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "Every",
+                lead,
                 fontFamily = DmSans,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
@@ -158,7 +224,7 @@ private fun MinutesRow(
                 keyboardActions = KeyboardActions(onDone = { onCommit(); keyboard?.hide() }),
                 modifier = Modifier
                     .width(72.dp)
-                    .testTag("nag-minutes")
+                    .testTag(tag)
                     .onFocusChanged { if (!it.isFocused) onCommit() }
                     .clip(R12)
                     .background(PeskyColors.Field)
@@ -175,14 +241,17 @@ private fun MinutesRow(
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
                 color = if (enabled) PeskyColors.Text else PeskyColors.TextDisabled,
+                // Tagged because both blocks say the same word: an
+                // onNodeWithText("minutes") matches two nodes now.
+                modifier = Modifier.testTag("$tag-unit"),
             )
         }
         Text(
-            "Anything from ${Settings.MIN_NAG_MINUTES} to ${Settings.MAX_NAG_MINUTES} minutes.",
+            "Anything from $min to $max minutes.",
             style = PeskyType.Body,
             fontSize = 12.sp,
             color = if (enabled) PeskyColors.TextMuted else PeskyColors.TextDisabled,
-            modifier = Modifier.testTag("nag-minutes-hint"),
+            modifier = Modifier.testTag("$tag-hint"),
         )
     }
 }

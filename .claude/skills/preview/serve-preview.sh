@@ -37,8 +37,16 @@ VERSION_FILE="$(basename "$BUILT")"
 # It also keeps this off port 9999, which the release sideload flow uses.
 mkdir -p "$SERVE_DIR"
 cp "$BUILT" "$SERVE_DIR/$VERSION_FILE"
-# A stable "latest" name, so a bookmarked link keeps working across versions.
-cp "$BUILT" "$SERVE_DIR/pesky-reminders-preview.apk"
+
+# NO un-versioned "latest" copy. Every preview file carries its version, always.
+# A stable pesky-reminders-preview.apk saves a bookmark and costs you the one
+# thing a preview exists to tell you: which build is on the phone. Tapping it in
+# the listing, or finding it in Downloads afterwards, you cannot tell 0.26.0 from
+# a stale 0.22.0 — and since the preview is debug-signed and installs in place,
+# the wrong one goes on silently. The version-pinned name makes that visible on
+# the phone, before the install. (The release flow in CLAUDE.md still stages a
+# dist/pesky-reminders.apk pointer; that is a hand-out link, a different job.)
+rm -f "$SERVE_DIR/pesky-reminders-preview.apk"
 
 echo "==> Staged in dist/preview/"
 ls -1sh "$SERVE_DIR" | sed 's/^/    /'
@@ -93,7 +101,9 @@ echo "    this machine:             http://localhost:$PORT/"
 echo "    android emulator:         http://10.0.2.2:$PORT/"
 echo
 echo "  Straight at the APK"
-[ -n "$IP" ] && echo "    http://$IP:$PORT/pesky-reminders-preview.apk"
-echo "    (version-pinned: $VERSION_FILE)"
+if [ -n "$IP" ]; then
+    echo "    http://$IP:$PORT/$VERSION_FILE"
+fi
+echo "    http://localhost:$PORT/$VERSION_FILE"
 echo
 echo "Stop it with:  kill \$(lsof -nP -tiTCP:$PORT -sTCP:LISTEN)"

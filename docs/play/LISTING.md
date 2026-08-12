@@ -22,10 +22,10 @@ Artifact to upload: `app/build/outputs/bundle/play/pesky-reminders-<version>.aab
 
 ## Short description
 
-Max 80 characters. This is 66:
+Max 80 characters. This is 65:
 
 ```
-Reminders you cannot swipe away — they stay until you act on them.
+Reminders you can't get rid of — they stay until you act on them.
 ```
 
 ## Full description
@@ -37,17 +37,18 @@ Pesky Reminders is for the things you keep not doing.
 
 Every other reminder app puts a notification on your lock screen. You flick it
 away without reading it, and the thing stays undone. Pesky doesn't let that
-happen. Its notification cannot be swiped away, and comes straight back if you
-try. The only ways out are the two it offers you: Snooze, or Done.
+happen. Its notification cannot be cleared, and swiping it away only buys you a
+few minutes. The only ways out are the two it offers you: Snooze, or Done.
 
 That is the whole idea, and everything else is built around it.
 
 WHEN SOMETHING IS DUE
 
-The notification arrives like any other — and then it stays. Swipe it and it
-reappears in the same place with the same two actions. "Clear all" skips it.
-Leave it sitting there and it buzzes again every few minutes until you deal with
-it; the interval is yours to set, and you can switch the nagging off entirely.
+The notification arrives like any other — and then it stays. Swipe it and it is
+snoozed rather than gone: it comes back in five minutes, and says so on the way
+out. "Clear all" skips it. Leave it sitting there and it buzzes again every few
+minutes until you deal with it. Both lengths are yours to set, and you can switch
+the nagging off entirely.
 
 Tap the notification and a panel floats over whatever you were doing, without
 opening the app. Mark it Done, or snooze it — 15 minutes, 30, an hour, three — or

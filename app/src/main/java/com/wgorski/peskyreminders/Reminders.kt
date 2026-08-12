@@ -102,11 +102,12 @@ object Reminders {
     /**
      * Put the same notification back, or refresh it in place, saying nothing.
      *
-     * Three callers, one shape: the swipe's delete-intent, an edit that leaves
-     * the task overdue, and a snooze onto a time that has already passed. In all
-     * three the reminder was already on screen and the user knows it — a buzz
-     * would be the app answering back, and after a *swipe* it reads as the app
-     * arguing with you.
+     * Two callers, one shape: an edit that leaves the task overdue, and a snooze
+     * onto a time that has already passed. In both the reminder was already on
+     * screen and the user knows it, so a buzz would only be the app answering back.
+     *
+     * The swipe used to be the third and is not any more — it snoozes instead, so
+     * there is nothing to put back. See [ReminderContract.ACTION_SWIPED].
      */
     fun repost(context: Context, taskId: Int) =
         post(context, taskId, ReminderNotifier.Alert.SILENT)

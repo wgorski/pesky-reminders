@@ -92,6 +92,21 @@ Its time shortcuts read in your clock's own format — 19:00 rather than 7:00 �
 
 ---
 
+## 1.0.0 — en-GB
+
+284 of 500 characters. The version number stays out of the text: it is Console
+state, like the track, and "1.0" tells a user nothing the change itself doesn't.
+
+```
+Swiping a reminder away now snoozes it instead of bringing it straight back. It returns in five minutes, and a message tells you when to expect it.
+
+Settings has the length: anything from 1 to 180 minutes.
+
+The reminder still can't be cleared by a swipe, and Clear all still skips it.
+```
+
+---
+
 ## Format for later releases
 
 Describe what changed for the user, not what changed in the code. The list rows

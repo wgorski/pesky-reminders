@@ -24,8 +24,10 @@ object ReminderNotifier {
      * How loudly a post is allowed to announce itself.
      *
      * The three cases are genuinely different events wearing the same
-     * notification, and conflating them is what made a *swipe* — a gesture the
-     * user makes to get rid of something — answer back with a full alert.
+     * notification, and conflating them is what made a re-post answer back with a
+     * full alert — loudest of all after a *swipe*, a gesture made to get rid of
+     * something. A swipe snoozes now and posts nothing at all, but the same
+     * distinction still governs every other re-post.
      *
      * - [FULL] the reminder arriving. Sound and a buzz; this is the moment the
      *   app exists for.
@@ -98,7 +100,7 @@ object ReminderNotifier {
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
             description =
-                "The same reminder repeating, or put back after you swipe it away. Never sounds."
+                "The same reminder repeating, or refreshed after an edit. Never sounds."
             enableVibration(false)
             setSound(null, null)
         }
@@ -198,8 +200,11 @@ object ReminderNotifier {
             // autoCancel stays off: tapping is not one of the two sanctioned
             // ways to clear a notification you are not allowed to dismiss.
             .setContentIntent(open)
+            // Swiping it away snoozes it — see ReminderContract.ACTION_SWIPED. It
+            // no longer comes straight back, which is why the receiver answers
+            // with a toast: something has to account for where it went.
             .setDeleteIntent(
-                broadcast(context, ReminderContract.ACTION_REPOST, task.id, ReminderContract.SLOT_REPOST)
+                broadcast(context, ReminderContract.ACTION_SWIPED, task.id, ReminderContract.SLOT_SWIPED)
             )
             // Snoozes on the tap rather than opening the sheet, which is what
             // lets it say how long. The title is built from SnoozeOptions so it
@@ -226,8 +231,13 @@ object ReminderNotifier {
     }
 
     /**
-     * Clears the notification without firing its delete-intent — which is why
-     * Snooze and Done can dismiss it but a swipe cannot.
+     * Clears the notification without firing its delete-intent.
+     *
+     * That is the whole difference between the sanctioned exits and a swipe: Snooze
+     * and Done come through here and the notification simply goes, while a swipe
+     * fires the delete-intent and is answered by
+     * [ReminderContract.ACTION_SWIPED] — which snoozes the task, so the reminder
+     * is coming back.
      */
     fun cancel(context: Context, taskId: Int) {
         context.getSystemService(NotificationManager::class.java)

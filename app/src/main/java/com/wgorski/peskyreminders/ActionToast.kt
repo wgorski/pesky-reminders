@@ -55,6 +55,24 @@ object ActionToast {
         ToggleOutcome.MISSING -> null
     }
 
+    /**
+     * "… 3:45 PM." — where a snooze landed, under whichever opening words.
+     *
+     * [forSnooze] and [forSwipe] describe the same move and differ only in how
+     * they open. Sharing this is about the *format*: one call to
+     * [TaskTime.formatCompact] and one trailing full stop, so the two sentences
+     * cannot come to punctuate or write a time differently. The opening words stay
+     * spelled out at each call site, where they can be read.
+     */
+    private fun landing(
+        opener: String,
+        task: Task?,
+        nowMillis: Long,
+        use24h: Boolean,
+    ): String? = task?.let {
+        opener + TaskTime.formatCompact(it.dueMillis, nowMillis, use24h) + "."
+    }
+
     /** The message for a snooze, or null if there is nothing worth saying. */
     fun forSnooze(
         outcome: SnoozeOutcome,
@@ -62,15 +80,42 @@ object ActionToast {
         nowMillis: Long,
         use24h: Boolean,
     ): String? = when (outcome) {
-        SnoozeOutcome.MOVED -> task?.let {
-            "Snoozed until " + TaskTime.formatCompact(it.dueMillis, nowMillis, use24h) + "."
-        }
+        SnoozeOutcome.MOVED -> landing("Snoozed until ", task, nowMillis, use24h)
         // Never "snoozed until": the task did not move, and claiming it did would
         // be the one case where the toast contradicts what the app actually did.
         SnoozeOutcome.ALREADY_PAST -> task?.let {
             TaskTime.formatCompact(it.dueMillis, nowMillis, use24h) + " has passed — still due."
         }
         SnoozeOutcome.MISSING -> null
+    }
+
+    /**
+     * The message for a swipe, or null if there is nothing worth saying.
+     *
+     * A swipe is a snooze nobody asked for by name, so the sentence is
+     * [forSnooze]'s with two words in front of it. "snoozed until" is kept
+     * word-for-word on purpose: a swipe should read as the same class of event as
+     * every other snooze rather than a private dialect, and "Nice try" is the only
+     * part that is new — it acknowledges that what was asked for was *getting rid
+     * of it*, then gets out of the way with the fact.
+     *
+     * Everything that is not [SnoozeOutcome.MOVED] is handed to [forSnooze]
+     * untouched. Only [Reminders.snooze] drives this path and it always lands in
+     * the future, so [SnoozeOutcome.ALREADY_PAST] is unreachable here — delegating
+     * rather than prefixing means that if it ever does become reachable it says the
+     * truthful thing, instead of "Nice try — 8:00 AM has passed", which would be
+     * smug about a snooze that never happened.
+     */
+    fun forSwipe(
+        outcome: SnoozeOutcome,
+        task: Task?,
+        nowMillis: Long,
+        use24h: Boolean,
+    ): String? = when (outcome) {
+        SnoozeOutcome.MOVED ->
+            landing("Nice try — snoozed until ", task, nowMillis, use24h)
+
+        else -> forSnooze(outcome, task, nowMillis, use24h)
     }
 
     /**
@@ -144,6 +189,27 @@ object ActionToast {
         use24h: Boolean,
     ) {
         forSnooze(outcome, TaskStore.find(context, taskId), nowMillis, use24h)
+            ?.let { show(context, it) }
+    }
+
+    /**
+     * Report where a swiped-away reminder went. See [toggled].
+     *
+     * This is the one toast the user did not ask for by acting on a control, and
+     * it is why the swipe is allowed a reply at all: the notification does not come
+     * back now, so without a line of text the app simply swallows the reminder and
+     * gives no account of itself. Sound and vibration stay off — that judgement,
+     * that a swipe answered with a chime reads as the app arguing with you, is
+     * unchanged.
+     */
+    fun swiped(
+        context: Context,
+        outcome: SnoozeOutcome,
+        taskId: Int,
+        nowMillis: Long,
+        use24h: Boolean,
+    ) {
+        forSwipe(outcome, TaskStore.find(context, taskId), nowMillis, use24h)
             ?.let { show(context, it) }
     }
 }

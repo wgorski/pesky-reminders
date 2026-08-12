@@ -143,18 +143,64 @@ class ReminderModelTest {
         )
     }
 
-    @Test fun dismissing_notification_triggers_repost() {
+    /**
+     * The swipe, driven through the notification's OWN delete-intent — exactly
+     * what the OS sends when the user swipes it away, and on Android 14+ the
+     * ongoing flag no longer blocks that. Calling `ReminderNotifier.cancel()` plus
+     * the broadcast by hand would bypass the real wiring and prove nothing.
+     */
+    @Test fun dismissing_the_notification_snoozes_it() {
         deliver(ReminderContract.ACTION_FIRE)
         val posted = active()
         assertNotNull("precondition: posted", posted)
-        // Fire the notification's OWN delete-intent — this is exactly what the OS
-        // sends when the user swipes the notification away (on Android 14+ the
-        // ongoing flag no longer blocks the swipe, so this path is what matters).
-        // We do NOT call ReminderNotifier.cancel() + ACTION_REPOST by hand, because
-        // that would bypass the real delete-intent wiring and prove nothing.
+        val before = stored().dueMillis
+
         posted!!.notification.deleteIntent.send()
-        Thread.sleep(400)
-        assertNotNull("dismissal must immediately re-post the notification", active())
+        Thread.sleep(600)
+
+        assertNull("a swipe must no longer put the notification straight back", active())
+        assertTrue(
+            "the swipe must push the task forward, not leave it where it was",
+            stored().dueMillis > before,
+        )
+        val minutes = minutesUntilNextAlarm()
+        assertTrue("re-armed ~5 min out (was $minutes min)", minutes in 4.0..5.5)
+    }
+
+    @Test fun a_swipe_uses_the_interval_from_settings() {
+        Settings.setSwipeSnoozeMinutes(context, 30)
+        deliver(ReminderContract.ACTION_FIRE)
+        val posted = active()
+        assertNotNull("precondition: posted", posted)
+
+        posted!!.notification.deleteIntent.send()
+        Thread.sleep(600)
+
+        val minutes = minutesUntilNextAlarm()
+        assertTrue("re-armed ~30 min out (was $minutes min)", minutes in 29.0..30.5)
+    }
+
+    /**
+     * A swipe moves one firing, not the cycle. Without the anchor a daily 09:00
+     * would slide five minutes later every day it was swiped away.
+     */
+    @Test fun swiping_a_repeater_keeps_the_slot_it_came_from() {
+        TaskStore.clear(context)
+        val slot = System.currentTimeMillis() - 1_000L
+        taskId = TaskStore.add(context, "Bins", slot, Repeat.DAILY).id
+        deliver(ReminderContract.ACTION_FIRE)
+        val posted = active()
+        assertNotNull("precondition: posted", posted)
+
+        posted!!.notification.deleteIntent.send()
+        Thread.sleep(600)
+
+        assertEquals(
+            "the recurring slot must survive the swipe",
+            slot,
+            stored().anchorMillis,
+        )
+        assertEquals("and slotMillis must still report it", slot, stored().slotMillis)
     }
 
     // ---- how loudly each post announces itself -------------------------------
@@ -169,28 +215,6 @@ class ReminderModelTest {
         assertEquals(
             ReminderContract.CHANNEL_ID,
             active()!!.notification.channelId,
-        )
-    }
-
-    /**
-     * Swiping it away must not answer back. Driven through the notification's own
-     * delete-intent, like [dismissing_notification_triggers_repost], because that
-     * is the only path that proves the real wiring.
-     */
-    @Test fun a_swipe_puts_it_back_without_a_sound() {
-        deliver(ReminderContract.ACTION_FIRE)
-        val posted = active()
-        assertNotNull("precondition: posted", posted)
-
-        posted!!.notification.deleteIntent.send()
-        Thread.sleep(400)
-
-        val back = active()
-        assertNotNull("precondition: re-posted", back)
-        assertEquals(
-            "a re-post after a swipe must be silent",
-            ReminderContract.QUIET_CHANNEL_ID,
-            back!!.notification.channelId,
         )
     }
 
@@ -1117,6 +1141,15 @@ class ReminderModelTest {
             "and must be re-posted under the new name",
             "Buy oat milk",
             n!!.notification.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString(),
+        )
+        // The surviving home of the Alert.SILENT routing check: this is now the
+        // most reachable Reminders.repost caller, the swipe having stopped being
+        // one. The user pressed Save a moment ago — buzzing them about their own
+        // edit is noise.
+        assertEquals(
+            "a re-post must not carry a sound",
+            ReminderContract.QUIET_CHANNEL_ID,
+            n.notification.channelId,
         )
     }
 

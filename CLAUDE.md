@@ -4,9 +4,10 @@ Guidance for Claude Code when working in this repo.
 
 ## What this is
 
-An Android app (Kotlin + Jetpack Compose) for reminders you **cannot swipe away** —
-only the notification's own **Snooze** and **Done** actions, or the action sheet a tap
-on it opens, can clear it.
+An Android app (Kotlin + Jetpack Compose) for reminders you **cannot get rid of by
+swiping** — a swipe snoozes the reminder for a few minutes and says so; only the
+notification's own **Snooze** and **Done** actions, or the action sheet a tap on it
+opens, actually clear it.
 
 It started as a one-screen POC proving that notification model, and now carries the
 full **"Pesky Reminders v2"** Claude Design UI on top of it: a task list banded by
@@ -17,9 +18,10 @@ repeat rule. **Tapping an overdue task opens the action panel** (Done + snooze);
 tapping anything else opens it for editing, and **holding any active row** opens the
 editor whatever its band.
 
-Mechanism: `setOngoing(true)` + a `deleteIntent` that re-posts the notification
-whenever it is dismissed. `AlarmManager.setAlarmClock()` schedules the fire.
-No foreground service, no full-screen intent.
+Mechanism: `setOngoing(true)` + a `deleteIntent` that **snoozes** the task whenever
+the notification is dismissed, for `Settings.swipeSnoozeMinutes` (5 by default).
+`AlarmManager.setAlarmClock()` schedules the fire. No foreground service, no
+full-screen intent.
 
 Design/plan/verification live in `docs/`. Package: `com.wgorski.peskyreminders`.
 
@@ -291,7 +293,7 @@ app/src/main/java/com/wgorski/peskyreminders/
   Reminders.kt          # facade where the store and the alarm/notification plumbing meet
   ReminderContract.kt   # constants, per-task notification ids and request codes
   ReminderScheduler.kt  # AlarmManager.setAlarmClock wrapper (schedule/cancel per task)
-  ReminderReceiver.kt   # BroadcastReceiver: FIRE / REPOST / DONE / SNOOZE / NAG
+  ReminderReceiver.kt   # BroadcastReceiver: FIRE / SWIPED / DONE / SNOOZE / NAG
   BootReceiver.kt       # re-arms alarms after a reboot or an app update
   ReminderActivity.kt   # standalone translucent host for the action sheet (own task)
   SnoozeOptions.kt      # PURE snooze durations + labels — unit-tested
@@ -306,7 +308,7 @@ app/src/main/java/com/wgorski/peskyreminders/
     TaskListScreen.kt   # header, the DueGroup bands + Done section, FAB, tap/hold routing
     TaskSheet.kt        # add AND edit in one: name, repeat, save, the action rows
     TimePickers.kt      # the wheels and the month grid — shared by both paths
-    SettingsSheet.kt    # nag on/off + interval
+    SettingsSheet.kt    # nag on/off + interval, and how long a swipe snoozes
     ReminderSheet.kt    # Done, 15/30/1h/3h + time-of-day chips, 5 min–72 hr wheel
     ConfirmSheet.kt     # shared "are you sure?" chrome — every delete goes through it
     ClearDoneSheet.kt   # confirms CLEAR (the whole done list)
@@ -343,9 +345,25 @@ docs/play/                  # Play listing copy, privacy policy, store graphics
 ## Android behavior to remember
 
 On Android 14+ (API 34+) the ongoing flag no longer blocks an *individual* swipe
-(it still blocks "clear all" and swipe-while-locked). The delete-intent re-post is
-what actually defeats a swipe. `NotificationManager.cancel()` (used by Snooze/Done)
-does NOT fire the delete-intent, so those clear the notification without re-posting.
+(it still blocks "clear all" and swipe-while-locked). The delete-intent is what
+answers that swipe, and it **snoozes** rather than re-posting — see
+`ACTION_SWIPED`. `NotificationManager.cancel()` (used by Snooze/Done) does NOT fire
+the delete-intent, which is why those two clear the notification outright and a
+swipe cannot.
+
+Two emulator facts, learned the hard way while verifying this:
+
+- **`adb shell input swipe` will not dismiss a notification.** It nudges the card
+  and it snaps back, whatever the duration. What works is a device-side
+  `input motionevent DOWN/MOVE…/UP` sequence run inside a single `adb shell '…'`
+  so the events are tightly timed — and reliably only when the sequence is issued
+  **twice** in that one shell, the first pass leaving the card part-dragged.
+- **A toast cannot be screenshotted with the shade open**, because the shade window
+  sits above the toast layer. Collapse the shade in the *same* device-side command
+  as the swipe (`…; cmd statusbar collapse`) and screencap straight after. Also
+  swipe only **one** notification: `ActionToast.show` cancels the previous toast, so
+  dismissing a group of three replaces the toast twice and the capture lands in a
+  gap. `adb logcat | grep -i toast` confirms one fired even when no frame caught it.
 
 ## Conventions & gotchas
 
@@ -507,14 +525,21 @@ does NOT fire the delete-intent, so those clear the notification without re-post
     than leaving that trap for the next caller. It builds with `applicationContext`, both
     so the statically-held `Toast` cannot retain an Activity and so the toast outlives
     `ReminderActivity.finishAndRemoveTask()`.
-  `ACTION_FIRE`/`REPOST`/`NAG` stay silent: the app talking to itself is not a user
-  action to confirm.
+  `ACTION_FIRE`/`NAG` stay silent: the app talking to itself is not a user action to
+  confirm. **`ACTION_SWIPED` is the exception that proves the rule** — it says "Nice
+  try — snoozed until 12:08 PM." through `forSwipe`, which is `forSnooze`'s sentence
+  with two words in front of it and `landing()` shared between them so the two cannot
+  punctuate a time differently. It gets a toast precisely *because* the notification
+  no longer reappears to speak for itself: silence there is the app swallowing a
+  reminder without accounting for it. Only in words, though — see the alert levels
+  below; nothing about the swipe chimes or buzzes.
 - **How loudly a post announces itself is `ReminderNotifier.Alert`, and there are three
   levels because there are three different events.** `FULL` (the reminder arriving)
-  sounds and buzzes; `BUZZ_ONLY` (the nag) buzzes; `SILENT` (a re-post after a swipe, an
-  edit that leaves the task overdue, a snooze onto a time already gone) does neither.
-  A swipe answering back with a chime and a buzz read as the app arguing with you.
-  Three things hold it together:
+  sounds and buzzes; `BUZZ_ONLY` (the nag) buzzes; `SILENT` (an edit that leaves the
+  task overdue, a snooze onto a time already gone) does neither. A swipe posts
+  *nothing* now — it snoozes — but the judgement that put it here stands and is why
+  its toast is text only: answering a swipe with a chime and a buzz read as the app
+  arguing with you. Three things hold it together:
   - **The sound is always Android's; the buzz depends on which event it is.** `FULL`
     lets the **channel** vibrate, because the system plays that as part of posting the
     notification and nothing about this process's lifetime can truncate it — the
@@ -534,20 +559,49 @@ does NOT fire the delete-intent, so those clear the notification without re-post
     `CHANNEL_ID` with `setSound(null, null)`, and `Alert.channelId` picks between them.
     Everything after a reminder's first appearance is silent by construction rather
     than by relying on `setOnlyAlertOnce`, which only suppresses re-alerts of a
-    notification *still on screen* — and a swipe removes it first, so the re-post is a
-    **fresh** post that flag never sees.
+    notification *still on screen*. That flag is also why a **snoozed** reminder
+    coming back does get its full alert: the swipe removed the notification, so the
+    return is a fresh post and the flag never sees it. The corollary bit the emulator
+    check — while an id is still showing, a re-fire raises no heads-up at all.
   - **Do not "simplify" this to `NotificationCompat.setSilent(true)`.** It silences by
     moving the notification into a group keyed `silent`, which drops it out of the app's
     stack in the shade — measured in `dumpsys notification` as `groupKey=silent` beside
-    the normal `ranker_group`/`AUTOGROUP_SUMMARY`, so a swiped reminder visibly jumps
+    the normal `ranker_group`/`AUTOGROUP_SUMMARY`, so a re-posted reminder visibly jumps
     out of the group. The second channel costs one extra row in the system notification
-    settings and nothing else. Four instrumented tests pin the routing.
+    settings and nothing else. Instrumented tests pin the routing.
   - **Don't turn `setOnlyAlertOnce` off to make the nag repeat.** The repeat is ours;
     that flag is what keeps Android from chiming on every interval.
 - **The notification follows the device clock, and there is a test pinning it.** It used
   to pass `is24HourFormat` **negated**, so a 24-hour device read "Is due Today, 5:17 PM"
   directly above a row saying "Was due Today, 17:17". Nothing caught it because the tests
   only asserted the "Is due …" prefix.
+- **A swipe snoozes, and it adds no logic to `Reminders`.** The delete-intent's branch
+  is `Settings.hydrate` → `Reminders.snooze(…, Settings.swipeSnoozeMinutes)` →
+  `ActionToast.swiped`, because `snooze` already did the whole job: cancels the
+  (already-gone) notification and the nag chain, keeps a repeater's `anchorMillis` so a
+  swiped daily 09:00 does not slide five minutes later every day, and re-arms the alarm
+  in the future by construction. Five things about it:
+  - **`hydrate` is not optional here.** The broadcast can be what starts the process, so
+    reading the property first would silently get the default. `Reminders.nag` has the
+    same shape for the same reason.
+  - **The setting has its own bounds** (`MIN`/`MAX`/`DEFAULT_SWIPE_SNOOZE_MINUTES`),
+    not the nag's, even though all six numbers coincide today — different questions,
+    free to diverge. Same call `SnoozeOptions.UNTIL_HOURS` makes about `TaskTime`'s
+    morning hour.
+  - **`MinutesRow` is shared, not copied.** It carries the *never lose a typed value on
+    focus alone* fix, so a second copy would drift at the first change to either. Both
+    drafts are hoisted into `SettingsSheet` so dismissing clamps **both** — and both
+    unit labels are tagged (`$tag-unit`), because `onNodeWithText("minutes")` now
+    matches two nodes. Same lesson as the hour chips; don't switch them back.
+  - **`ACTION_REPOST` became `ACTION_SWIPED`** (slot value 2 unchanged, so no request
+    code moved). `Reminders.repost` stays — an edit that leaves a task overdue and a
+    `snoozeUntil` onto a past time still call it — it is only unreachable by broadcast.
+    A pre-update notification holds a PendingIntent with the old action string, so a
+    swipe in that window loses the snooze; `MY_PACKAGE_REPLACED` → `restoreAll` re-posts
+    and replaces it within seconds, which is why no compatibility branch exists.
+  - **`setOngoing(true)` still matters** — it blocks clear-all and swipe-while-locked,
+    the sweeping gestures, where a reminder that goes with forty others was never read.
+    Only the deliberate single swipe buys the five minutes.
 - **A snooze moves one firing, not the whole cycle.** `Task.dueMillis` is when it
   fires; `Task.anchorMillis` holds the recurring slot it came from while a repeater is
   snoozed, and `Task.slotMillis` is the accessor everything should reason with.

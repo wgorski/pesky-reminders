@@ -106,6 +106,45 @@ class ActionToastTest {
         )
     }
 
+    // ---- a swipe ------------------------------------------------------------
+
+    /**
+     * "snoozed until" is kept verbatim from [ActionToast.forSnooze], so a swipe
+     * reads as the same class of event rather than a private dialect. "Nice try"
+     * is the only new part, and it is the part that acknowledges the user asked
+     * for something else and got this.
+     */
+    @Test fun a_swipe_says_where_the_reminder_went() {
+        assertEquals(
+            "Nice try — snoozed until 3:45 PM.",
+            ActionToast.forSwipe(SnoozeOutcome.MOVED, task(at(28, 15, 45)), now, false),
+        )
+    }
+
+    @Test fun a_swipe_landing_tomorrow_names_the_day_too() {
+        assertEquals(
+            "Nice try — snoozed until Tomorrow 8:00 AM.",
+            ActionToast.forSwipe(SnoozeOutcome.MOVED, task(at(29, 8)), now, false),
+        )
+    }
+
+    @Test fun a_swiped_task_that_is_already_gone_says_nothing() {
+        assertNull(ActionToast.forSwipe(SnoozeOutcome.MISSING, null, now, false))
+    }
+
+    /**
+     * Unreachable from [Reminders.snooze], which always lands in the future. It
+     * delegates rather than duplicating, so if it ever does become reachable it
+     * says the truthful thing instead of claiming a move that did not happen —
+     * "Nice try — snoozed until 8:00 AM" would be a lie twice over.
+     */
+    @Test fun a_swipe_that_somehow_did_not_move_borrows_the_snooze_wording() {
+        assertEquals(
+            ActionToast.forSnooze(SnoozeOutcome.ALREADY_PAST, task(at(28, 8)), now, false),
+            ActionToast.forSwipe(SnoozeOutcome.ALREADY_PAST, task(at(28, 8)), now, false),
+        )
+    }
+
     // ---- the clock the user set ---------------------------------------------
 
     @Test fun a_24_hour_device_gets_24_hour_times() {
@@ -118,6 +157,10 @@ class ActionToastTest {
             ActionToast.forToggle(
                 ToggleOutcome.ADVANCED, task(at(29, 9), Repeat.DAILY), now, true,
             ),
+        )
+        assertEquals(
+            "Nice try — snoozed until 15:45.",
+            ActionToast.forSwipe(SnoozeOutcome.MOVED, task(at(28, 15, 45)), now, true),
         )
     }
 }

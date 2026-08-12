@@ -28,13 +28,35 @@ One script does all of it, from the repo root:
 ```
 
 It exports the Android SDK env, runs `./gradlew :app:assemblePreview`, copies the
-APK into `dist/preview/` under both its version-pinned name and the stable
-`pesky-reminders-preview.apk`, starts a static server on port **9998** (reusing
-one that is already listening), and prints the URLs.
+APK into `dist/preview/` under its **version-pinned name only**, starts a static
+server on port **9998** (reusing one that is already listening), and prints the
+URLs.
 
 Then **report the URLs to the user** — lead with the phone one, since that is
 what they asked for. The directory listing is the useful link: they can open it
 on the phone and tap the APK.
+
+### Every preview file carries its version — no un-versioned copy
+
+`dist/preview/` holds `pesky-reminders-0.26.0-preview.apk` and nothing shorter.
+There is deliberately **no** stable `pesky-reminders-preview.apk`, and the script
+deletes one if it finds it.
+
+A "latest" pointer saves a bookmark and costs the one thing a preview exists to
+tell you: *which build is on the phone*. Tapping it in the listing — or finding it
+in Downloads a day later — you cannot tell 0.26.0 from a stale 0.22.0, and because
+the preview is debug-signed and installs in place, the wrong one goes on
+silently with no signature error to stop it. The version in the filename is the
+only cue that reaches the phone **before** the install.
+
+So: don't reintroduce the short name, don't hand out a URL without a version in
+it, and if the user asks for a stable link, give them the **directory listing**
+instead — it always shows the newest build, and it shows what it is.
+
+This is a rule about the *preview* only. The release flow in CLAUDE.md still
+stages both `dist/pesky-reminders-$V.apk` and a `dist/pesky-reminders.apk`
+pointer, because that one is a hand-out link for a build that has been published
+under a version people already know.
 
 If the phone refuses the install, it is almost always one of:
 
@@ -79,6 +101,8 @@ everywhere except the launcher.
 | Gradle task | `:app:assemblePreview` |
 | Build output | `app/build/outputs/apk/preview/pesky-reminders-X.Y.Z-preview.apk` |
 | Served directory | `dist/preview/` (gitignored) |
+| Served filenames | version-pinned only — never an un-versioned `pesky-reminders-preview.apk` |
+| Stable link to hand out | the directory listing, not a file |
 | Port | `9998` (release sideload flow owns 9999) |
 | Package | `com.wgorski.peskyreminders.preview` |
 | Override the port | `PESKY_PREVIEW_PORT=… .claude/skills/preview/serve-preview.sh` |
@@ -89,6 +113,8 @@ everywhere except the launcher.
 - **Bumping the version to make a preview.** Don't. The point is to test the
   build you are about to ship, so it must carry that version; the `-preview`
   suffix is what distinguishes the artifact.
+- **Staging or linking an un-versioned `pesky-reminders-preview.apk`.** Don't —
+  see above. Point the user at the directory listing if they want one stable URL.
 - **Serving `dist/` instead of `dist/preview/`.** `dist/` holds every release APK
   ever staged, so the listing is unreadable on a phone — and it collides with the
   port-9999 release flow.

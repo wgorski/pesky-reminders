@@ -196,6 +196,7 @@ fun PeskyApp() {
                 SettingsSheet(
                     nagEnabled = Settings.nagEnabled,
                     nagMinutes = Settings.nagMinutes,
+                    swipeSnoozeMinutes = Settings.swipeSnoozeMinutes,
                     onNagEnabled = {
                         Settings.setNagEnabled(context, it)
                         Reminders.applyNagSettings(context)
@@ -204,6 +205,9 @@ fun PeskyApp() {
                         Settings.setNagMinutes(context, it)
                         Reminders.applyNagSettings(context)
                     },
+                    // Nothing to re-apply: the value is read at the moment a
+                    // swipe happens, not armed in advance like a nag.
+                    onSwipeSnoozeMinutes = { Settings.setSwipeSnoozeMinutes(context, it) },
                     onDismiss = { settingsOpen = false },
                 )
             }

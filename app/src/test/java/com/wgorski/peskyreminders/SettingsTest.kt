@@ -30,4 +30,47 @@ class SettingsTest {
             Settings.coerceMinutes(Settings.DEFAULT_NAG_MINUTES),
         )
     }
+
+    // ---- how long a swipe hides a reminder ----------------------------------
+
+    @Test fun a_sensible_swipe_snooze_is_left_alone() {
+        assertEquals(5, Settings.coerceSwipeSnoozeMinutes(5))
+        assertEquals(1, Settings.coerceSwipeSnoozeMinutes(1))
+        assertEquals(180, Settings.coerceSwipeSnoozeMinutes(180))
+    }
+
+    @Test fun a_zero_swipe_snooze_is_pulled_up_to_the_minimum() {
+        // Zero would put the notification straight back, which is the behaviour
+        // this setting exists to replace.
+        assertEquals(1, Settings.coerceSwipeSnoozeMinutes(0))
+        assertEquals(1, Settings.coerceSwipeSnoozeMinutes(-7))
+    }
+
+    @Test fun an_absurd_swipe_snooze_is_pulled_down_to_the_maximum() {
+        assertEquals(180, Settings.coerceSwipeSnoozeMinutes(181))
+        assertEquals(180, Settings.coerceSwipeSnoozeMinutes(Int.MAX_VALUE))
+    }
+
+    @Test fun the_swipe_snooze_default_sits_inside_its_own_range() {
+        assertEquals(
+            Settings.DEFAULT_SWIPE_SNOOZE_MINUTES,
+            Settings.coerceSwipeSnoozeMinutes(Settings.DEFAULT_SWIPE_SNOOZE_MINUTES),
+        )
+    }
+
+    /**
+     * The two clamps have their own bounds even though all six numbers coincide
+     * today. They answer different questions and are free to diverge; this pins
+     * that neither reads the other's constants.
+     */
+    @Test fun the_swipe_snooze_clamp_uses_its_own_bounds() {
+        assertEquals(
+            Settings.MIN_SWIPE_SNOOZE_MINUTES,
+            Settings.coerceSwipeSnoozeMinutes(Settings.MIN_SWIPE_SNOOZE_MINUTES - 1),
+        )
+        assertEquals(
+            Settings.MAX_SWIPE_SNOOZE_MINUTES,
+            Settings.coerceSwipeSnoozeMinutes(Settings.MAX_SWIPE_SNOOZE_MINUTES + 1),
+        )
+    }
 }
