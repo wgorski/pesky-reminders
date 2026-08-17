@@ -24,6 +24,15 @@ object Settings {
     const val MAX_NAG_MINUTES = 180
 
     /**
+     * The intervals the sheet offers as chips, before the slider takes over.
+     *
+     * Its own list rather than one shared with [SWIPE_SNOOZE_PRESET_MINUTES], for
+     * the same reason the bounds below are its own: the two answer different
+     * questions and are free to diverge. They coincide today.
+     */
+    val NAG_PRESET_MINUTES = listOf(5, 15, 30)
+
+    /**
      * How long a swipe hides a reminder for.
      *
      * Its own bounds rather than the nag's, even though all six numbers coincide
@@ -41,6 +50,9 @@ object Settings {
     const val DEFAULT_SWIPE_SNOOZE_MINUTES = 5
     const val MIN_SWIPE_SNOOZE_MINUTES = 1
     const val MAX_SWIPE_SNOOZE_MINUTES = 180
+
+    /** As [NAG_PRESET_MINUTES], for the other question. */
+    val SWIPE_SNOOZE_PRESET_MINUTES = listOf(5, 15, 30)
 
     /** Whether an ignored notification keeps buzzing. */
     var nagEnabled by mutableStateOf(true)
@@ -114,6 +126,41 @@ object Settings {
      */
     fun coerceSwipeSnoozeMinutes(minutes: Int): Int =
         minutes.coerceIn(MIN_SWIPE_SNOOZE_MINUTES, MAX_SWIPE_SNOOZE_MINUTES)
+
+    /**
+     * How every minute count in the settings sheet is written: "5 min", "90 min".
+     *
+     * Deliberately **not** [SnoozeOptions.label], which coarsens past an hour —
+     * "1h 30" for 90. That is right for a snooze ladder that runs out to three
+     * days, and wrong here: both settings are a count of minutes, chosen on a
+     * slider whose ends are marked in minutes, so the chips, the readout under
+     * your thumb, the marks at either end of the track and [summarise] all have to
+     * say the same word or the sheet contradicts itself. One place to change.
+     */
+    fun minutesLabel(minutes: Int): String = "$minutes min"
+
+    /**
+     * The single sentence at the foot of the settings sheet, stating what the two
+     * settings add up to.
+     *
+     * Pure and here rather than in the sheet, next to the values it describes, for
+     * the reason every string [ActionToast] can say lives in one place: this is
+     * the app accounting for its own behaviour, and it must not be able to
+     * describe a setting differently from the control that sets it.
+     *
+     * It says "snooze it or tick it off" rather than only the latter because a
+     * snooze stops the buzzing too — [Reminders.snooze] cancels the nag chain —
+     * and claiming otherwise would make the sentence untrue for the more common
+     * of the two answers.
+     */
+    fun summarise(nagEnabled: Boolean, nagMinutes: Int, swipeSnoozeMinutes: Int): String {
+        val buzzing = if (nagEnabled) {
+            "Pesky buzzes every ${minutesLabel(nagMinutes)} until you snooze it or tick it off."
+        } else {
+            "Pesky buzzes once and waits."
+        }
+        return "$buzzing A swipe pushes it back ${minutesLabel(swipeSnoozeMinutes)}."
+    }
 
     /** Test seam — drops both the stored and in-memory values. */
     fun clear(context: Context) {

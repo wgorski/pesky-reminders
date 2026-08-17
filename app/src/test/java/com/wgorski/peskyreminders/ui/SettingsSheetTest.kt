@@ -8,14 +8,16 @@ import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performSemanticsAction
-import androidx.compose.ui.test.performTextClearance
-import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -27,8 +29,10 @@ import org.robolectric.annotation.Config
  * Drives the settings sheet on the JVM.
  *
  * Same caveat as [AddTaskSheetTest]: Compose's pointer injection does not reach
- * into a sheet body under Robolectric, so controls are asserted displayed and
- * then their click action is fired directly.
+ * into a sheet body under Robolectric, so controls are asserted displayed and then
+ * their click action is fired directly. The slider is driven through its
+ * `SetProgress` action for the same reason — see [PeskySliderTest], which pins the
+ * arithmetic a real drag would go through.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34], qualifiers = "w411dp-h891dp-xhdpi")
@@ -36,7 +40,7 @@ class SettingsSheetTest {
 
     @get:Rule val compose = createComposeRule()
 
-    // Real state, so a toggle actually re-renders the sheet.
+    // Real state, so a toggle or a chip actually re-renders the sheet.
     private val nagEnabled = mutableStateOf(true)
     private val nagMinutes = mutableIntStateOf(5)
     private val swipeMinutes = mutableIntStateOf(5)
@@ -59,67 +63,100 @@ class SettingsSheetTest {
         }
     }
 
-    private fun switchState(): ToggleableState =
-        compose.onNodeWithTag("nag-switch")
-            .fetchSemanticsNode()
-            .config[SemanticsProperties.ToggleableState]
-
-    private fun tapSwitch() {
-        compose.onNodeWithTag("nag-switch")
+    private fun tap(tag: String) {
+        compose.onNodeWithTag(tag)
             .assertIsDisplayed()
             .performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForIdle()
     }
 
+    /** Moves a slider the way a screen reader would — no pointer involved. */
+    private fun slide(tag: String, to: Int) {
+        compose.onNodeWithTag(tag)
+            .assertIsDisplayed()
+            .performSemanticsAction(SemanticsActions.SetProgress) { it(to.toFloat()) }
+        compose.waitForIdle()
+    }
+
+    private fun switchState(): ToggleableState =
+        compose.onNodeWithTag("nag-switch")
+            .fetchSemanticsNode()
+            .config[SemanticsProperties.ToggleableState]
+
+    private fun countOf(text: String): Int =
+        compose.onAllNodesWithText(text).fetchSemanticsNodes().size
+
+    /** Zero means the control is absent, not merely hidden or greyed out. */
+    private fun countTagged(tag: String): Int =
+        compose.onAllNodesWithTag(tag).fetchSemanticsNodes().size
+
     // ---- rendering ----------------------------------------------------------
 
-    @Test fun the_sheet_shows_the_current_settings() {
-        show(enabled = true, minutes = 5)
+    @Test fun the_sheet_shows_both_settings_under_one_heading() {
+        show()
+        compose.onNodeWithText("WHEN A REMINDER IS DUE").assertIsDisplayed()
         compose.onNodeWithText("Keep buzzing").assertIsDisplayed()
-        compose.onNodeWithTag("nag-minutes").assertTextEquals("5")
+        compose.onNodeWithText("Swipe to snooze").assertIsDisplayed()
         assertEquals(ToggleableState.On, switchState())
     }
 
-    @Test fun a_stored_interval_is_shown_rather_than_the_default() {
-        show(minutes = 45)
-        compose.onNodeWithTag("nag-minutes").assertTextEquals("45")
-    }
-
-    @Test fun the_range_is_spelled_out() {
+    @Test fun each_card_names_what_it_changes() {
         show()
-        compose.onNodeWithTag("nag-minutes-hint")
-            .assertTextEquals("Anything from 1 to 180 minutes.")
+        compose.onNodeWithText("Buzz every").assertIsDisplayed()
+        compose.onNodeWithText("Snooze for").assertIsDisplayed()
     }
 
-    /**
-     * Both blocks carry the same unit word, so these target the tag rather than
-     * the text — `onNodeWithText("minutes")` matches two nodes.
-     */
-    @Test fun the_unit_label_is_singular_for_one_minute() {
-        show(minutes = 1)
-        compose.onNodeWithTag("nag-minutes-unit").assertTextEquals("minute")
+    /** Both cards offer the same three, which is why nothing here goes by text. */
+    @Test fun both_cards_offer_the_same_three_durations() {
+        show()
+        assertEquals(2, countOf("5 min"))
+        assertEquals(2, countOf("15 min"))
+        assertEquals(2, countOf("30 min"))
+        assertEquals(2, countOf("Custom"))
     }
 
-    @Test fun the_unit_label_is_plural_otherwise() {
-        show(minutes = 5)
-        compose.onNodeWithTag("nag-minutes-unit").assertTextEquals("minutes")
+    @Test fun a_chip_is_labelled_with_the_duration_it_commits() {
+        show()
+        compose.onNodeWithTag("nag-preset-5").assertTextEquals("5 min")
+        compose.onNodeWithTag("nag-preset-15").assertTextEquals("15 min")
+        compose.onNodeWithTag("nag-preset-30").assertTextEquals("30 min")
+        compose.onNodeWithTag("nag-custom").assertTextEquals("Custom")
     }
 
-    @Test fun each_block_pluralises_its_own_unit() {
-        show(minutes = 1, swipe = 5)
-        compose.onNodeWithTag("nag-minutes-unit").assertTextEquals("minute")
-        compose.onNodeWithTag("swipe-minutes-unit").assertTextEquals("minutes")
+    // ---- the summary at the foot ---------------------------------------------
+
+    @Test fun the_summary_states_what_the_two_settings_add_up_to() {
+        show(enabled = true, minutes = 5, swipe = 5)
+        compose.onNodeWithTag("settings-summary").assertTextEquals(
+            "Pesky buzzes every 5 min until you snooze it or tick it off. " +
+                "A swipe pushes it back 5 min."
+        )
+    }
+
+    @Test fun the_summary_follows_a_change_rather_than_going_stale() {
+        show(minutes = 5, swipe = 5)
+        tap("swipe-preset-30")
+        compose.onNodeWithTag("settings-summary").assertTextEquals(
+            "Pesky buzzes every 5 min until you snooze it or tick it off. " +
+                "A swipe pushes it back 30 min."
+        )
+    }
+
+    @Test fun the_summary_reports_the_quiet_case_too() {
+        show(enabled = false, swipe = 15)
+        compose.onNodeWithTag("settings-summary")
+            .assertTextEquals("Pesky buzzes once and waits. A swipe pushes it back 15 min.")
     }
 
     // ---- the switch ---------------------------------------------------------
 
     @Test fun the_switch_turns_nagging_off_and_back_on() {
         show(enabled = true)
-        tapSwitch()
+        tap("nag-switch")
         assertEquals(ToggleableState.Off, switchState())
         assertEquals(false, nagEnabled.value)
 
-        tapSwitch()
+        tap("nag-switch")
         assertEquals(ToggleableState.On, switchState())
         assertEquals(true, nagEnabled.value)
     }
@@ -131,185 +168,172 @@ class SettingsSheetTest {
         )
     }
 
-    @Test fun the_interval_field_is_disabled_while_nagging_is_off() {
-        show(enabled = false)
-        compose.onNodeWithTag("nag-minutes")
-            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Disabled))
-    }
-
-    // ---- typing an interval -------------------------------------------------
-
-    private fun type(value: String) {
-        compose.onNodeWithTag("nag-minutes").performTextClearance()
-        compose.onNodeWithTag("nag-minutes").performTextInput(value)
-        compose.onNodeWithTag("nag-minutes")
-            .performSemanticsAction(SemanticsActions.OnImeAction)
-        compose.waitForIdle()
-    }
-
     /**
-     * Regression: hiding the keyboard does not clear Compose focus, so relying
-     * on focus loss alone silently dropped a typed value.
+     * Gone, not greyed. A disabled row costs its full height to say nothing, and
+     * the switch immediately above has already said why it is absent.
      */
-    @Test fun a_typed_interval_commits_without_any_focus_change() {
-        show(minutes = 5)
-        compose.onNodeWithTag("nag-minutes").performTextClearance()
-        compose.onNodeWithTag("nag-minutes").performTextInput("12")
-        compose.waitForIdle()
-        assertEquals("must be stored on the keystroke, not on blur", 12, nagMinutes.intValue)
+    @Test fun turning_nagging_off_takes_the_interval_away_entirely() {
+        show(enabled = true)
+        compose.onNodeWithText("Buzz every").assertIsDisplayed()
+
+        tap("nag-switch")
+        assertEquals(0, countOf("Buzz every"))
+        assertEquals(0, countTagged("nag-preset-5"))
     }
 
-    @Test fun dismissing_commits_a_value_that_still_needs_clamping() {
-        show(minutes = 5)
-        compose.onNodeWithTag("nag-minutes").performTextClearance()
-        compose.onNodeWithTag("nag-minutes").performTextInput("999")
-        // Out of range, so nothing committed yet.
-        assertEquals(5, nagMinutes.intValue)
+    @Test fun turning_nagging_back_on_brings_the_interval_back() {
+        show(enabled = false)
+        assertEquals(0, countOf("Buzz every"))
 
-        compose.onNodeWithContentDescription("Close")
-            .performSemanticsAction(SemanticsActions.OnClick)
-        compose.waitForIdle()
-        assertEquals("clamped on the way out", 180, nagMinutes.intValue)
+        tap("nag-switch")
+        compose.onNodeWithText("Buzz every").assertIsDisplayed()
+        compose.onNodeWithTag("nag-preset-5").assertIsSelected()
     }
 
-    @Test fun a_typed_interval_is_kept() {
-        show(minutes = 5)
-        type("20")
-        assertEquals(20, nagMinutes.intValue)
-        compose.onNodeWithTag("nag-minutes").assertTextEquals("20")
-    }
-
-    @Test fun a_zero_is_clamped_up_rather_than_busy_looping_the_alarm() {
-        show(minutes = 5)
-        type("0")
-        assertEquals(1, nagMinutes.intValue)
-        compose.onNodeWithTag("nag-minutes").assertTextEquals("1")
-    }
-
-    @Test fun an_absurd_interval_is_clamped_down() {
-        show(minutes = 5)
-        type("999")
-        assertEquals(180, nagMinutes.intValue)
-        compose.onNodeWithTag("nag-minutes").assertTextEquals("180")
-    }
-
-    @Test fun clearing_the_field_falls_back_to_the_stored_value() {
-        show(minutes = 12)
-        type("")
-        assertEquals(12, nagMinutes.intValue)
-        compose.onNodeWithTag("nag-minutes").assertTextEquals("12")
-    }
-
-    @Test fun non_digits_never_reach_the_field() {
-        show(minutes = 5)
-        compose.onNodeWithTag("nag-minutes").performTextClearance()
-        compose.onNodeWithTag("nag-minutes").performTextInput("1a2b")
-        compose.onNodeWithTag("nag-minutes").assertTextEquals("12")
-    }
-
-    // ---- how long a swipe hides a reminder ----------------------------------
-
-    private fun typeSwipe(value: String) {
-        compose.onNodeWithTag("swipe-minutes").performTextClearance()
-        compose.onNodeWithTag("swipe-minutes").performTextInput(value)
-        compose.onNodeWithTag("swipe-minutes")
-            .performSemanticsAction(SemanticsActions.OnImeAction)
-        compose.waitForIdle()
-    }
-
-    @Test fun the_sheet_shows_the_swipe_snooze() {
-        show(swipe = 5)
-        compose.onNodeWithText("SWIPING").assertIsDisplayed()
-        compose.onNodeWithTag("swipe-minutes").assertTextEquals("5")
-    }
-
-    @Test fun a_stored_swipe_snooze_is_shown_rather_than_the_default() {
-        show(swipe = 20)
-        compose.onNodeWithTag("swipe-minutes").assertTextEquals("20")
-    }
-
-    @Test fun the_swipe_range_is_spelled_out() {
-        show()
-        compose.onNodeWithTag("swipe-minutes-hint")
-            .assertTextEquals("Anything from 1 to 180 minutes.")
-    }
-
-    @Test fun a_typed_swipe_snooze_is_kept() {
-        show(swipe = 5)
-        typeSwipe("30")
-        assertEquals(30, swipeMinutes.intValue)
-        compose.onNodeWithTag("swipe-minutes").assertTextEquals("30")
-    }
-
-    @Test fun a_zero_swipe_snooze_is_clamped_up() {
-        show(swipe = 5)
-        typeSwipe("0")
-        assertEquals(1, swipeMinutes.intValue)
-        compose.onNodeWithTag("swipe-minutes").assertTextEquals("1")
-    }
-
-    @Test fun an_absurd_swipe_snooze_is_clamped_down() {
-        show(swipe = 5)
-        typeSwipe("999")
-        assertEquals(180, swipeMinutes.intValue)
-        compose.onNodeWithTag("swipe-minutes").assertTextEquals("180")
-    }
-
-    @Test fun dismissing_commits_a_swipe_snooze_that_still_needs_clamping() {
-        show(swipe = 5)
-        compose.onNodeWithTag("swipe-minutes").performTextClearance()
-        compose.onNodeWithTag("swipe-minutes").performTextInput("999")
-        assertEquals("out of range, so nothing committed yet", 5, swipeMinutes.intValue)
-
-        compose.onNodeWithContentDescription("Close")
-            .performSemanticsAction(SemanticsActions.OnClick)
-        compose.waitForIdle()
-        assertEquals("clamped on the way out", 180, swipeMinutes.intValue)
-    }
-
-    /** The swipe is unconditional, so the field is never greyed out. */
+    /** The swipe is unconditional, so nothing about the switch reaches it. */
     @Test fun turning_nagging_off_leaves_the_swipe_snooze_alone() {
         show(enabled = false, swipe = 5)
-        compose.onNodeWithTag("swipe-minutes").assertTextEquals("5")
-        typeSwipe("30")
+        compose.onNodeWithText("Snooze for").assertIsDisplayed()
+        tap("swipe-preset-30")
         assertEquals(30, swipeMinutes.intValue)
     }
 
-    // ---- two fields in one sheet --------------------------------------------
+    // ---- the chips ----------------------------------------------------------
+
+    @Test fun the_stored_interval_is_the_chip_that_reads_as_chosen() {
+        show(minutes = 15)
+        compose.onNodeWithTag("nag-preset-15").assertIsSelected()
+        compose.onNodeWithTag("nag-preset-5").assertIsNotSelected()
+        compose.onNodeWithTag("nag-preset-30").assertIsNotSelected()
+        compose.onNodeWithTag("nag-custom").assertIsNotSelected()
+    }
+
+    @Test fun tapping_a_chip_commits_it_at_once() {
+        show(minutes = 5)
+        tap("nag-preset-30")
+        assertEquals(30, nagMinutes.intValue)
+        compose.onNodeWithTag("nag-preset-30").assertIsSelected()
+        compose.onNodeWithTag("nag-preset-5").assertIsNotSelected()
+    }
+
+    @Test fun the_swipe_chips_commit_their_own_setting() {
+        show(swipe = 5)
+        compose.onNodeWithTag("swipe-preset-5").assertIsSelected()
+        tap("swipe-preset-15")
+        assertEquals(15, swipeMinutes.intValue)
+        compose.onNodeWithTag("swipe-preset-15").assertIsSelected()
+    }
 
     /**
-     * `MinutesRow` is shared between the two blocks, so this is exactly where a
-     * hoisted-state bug would live: one draft string, or one commit callback,
-     * serving both fields.
+     * `MinutesPicker` is shared between the two cards, so this is exactly where a
+     * hoisted-state bug would live: one draft, or one open-custom flag, serving
+     * both.
      */
-    @Test fun typing_a_swipe_snooze_leaves_the_nag_interval_alone() {
-        show(minutes = 12, swipe = 5)
-        typeSwipe("30")
+    @Test fun choosing_a_swipe_snooze_leaves_the_nag_interval_alone() {
+        show(minutes = 15, swipe = 5)
+        tap("swipe-preset-30")
         assertEquals(30, swipeMinutes.intValue)
-        assertEquals(12, nagMinutes.intValue)
-        compose.onNodeWithTag("nag-minutes").assertTextEquals("12")
+        assertEquals(15, nagMinutes.intValue)
+        compose.onNodeWithTag("nag-preset-15").assertIsSelected()
     }
 
-    @Test fun typing_a_nag_interval_leaves_the_swipe_snooze_alone() {
-        show(minutes = 12, swipe = 5)
-        type("30")
+    @Test fun choosing_a_nag_interval_leaves_the_swipe_snooze_alone() {
+        show(minutes = 5, swipe = 15)
+        tap("nag-preset-30")
         assertEquals(30, nagMinutes.intValue)
-        assertEquals(5, swipeMinutes.intValue)
-        compose.onNodeWithTag("swipe-minutes").assertTextEquals("5")
+        assertEquals(15, swipeMinutes.intValue)
+        compose.onNodeWithTag("swipe-preset-15").assertIsSelected()
     }
 
-    @Test fun dismissing_clamps_both_fields_at_once() {
-        show(minutes = 5, swipe = 5)
-        compose.onNodeWithTag("nag-minutes").performTextClearance()
-        compose.onNodeWithTag("nag-minutes").performTextInput("999")
-        compose.onNodeWithTag("swipe-minutes").performTextClearance()
-        compose.onNodeWithTag("swipe-minutes").performTextInput("0")
+    // ---- the custom slider --------------------------------------------------
 
-        compose.onNodeWithContentDescription("Close")
-            .performSemanticsAction(SemanticsActions.OnClick)
-        compose.waitForIdle()
+    @Test fun the_slider_is_out_of_the_way_until_custom_is_asked_for() {
+        show(minutes = 5)
+        assertEquals(0, countTagged("nag-slider"))
+        tap("nag-custom")
+        compose.onNodeWithTag("nag-slider").assertIsDisplayed()
+        compose.onNodeWithTag("nag-readout").assertTextEquals("5 min")
+    }
+
+    /** Opening the slider changes nothing on its own — it only offers the range. */
+    @Test fun asking_for_custom_commits_nothing() {
+        show(minutes = 5)
+        tap("nag-custom")
+        assertEquals(5, nagMinutes.intValue)
+        compose.onNodeWithTag("nag-custom").assertIsSelected()
+        compose.onNodeWithTag("nag-preset-5").assertIsNotSelected()
+    }
+
+    @Test fun the_track_is_marked_with_the_range_it_covers() {
+        show(minutes = 5)
+        tap("nag-custom")
+        compose.onNodeWithTag("nag-floor").assertTextEquals("1 min")
+        compose.onNodeWithTag("nag-ceiling").assertTextEquals("180 min")
+    }
+
+    @Test fun the_slider_commits_where_it_is_let_go() {
+        show(minutes = 5)
+        tap("nag-custom")
+        slide("nag-slider", 47)
+        assertEquals(47, nagMinutes.intValue)
+        compose.onNodeWithTag("nag-readout").assertTextEquals("47 min")
+    }
+
+    @Test fun the_slider_cannot_leave_its_own_range() {
+        show(minutes = 5)
+        tap("nag-custom")
+        slide("nag-slider", 9_999)
         assertEquals(180, nagMinutes.intValue)
-        assertEquals(1, swipeMinutes.intValue)
+        slide("nag-slider", -40)
+        assertEquals(1, nagMinutes.intValue)
+        compose.onNodeWithTag("nag-readout").assertTextEquals("1 min")
+    }
+
+    /**
+     * A value that is not one of the chips has to open on the slider, or the sheet
+     * would show a stored 47 with nothing selected and no way to see it.
+     */
+    @Test fun a_stored_value_off_the_chips_opens_on_the_slider() {
+        show(minutes = 47, swipe = 5)
+        compose.onNodeWithTag("nag-custom").assertIsSelected()
+        compose.onNodeWithTag("nag-readout").assertTextEquals("47 min")
+        // …and the other card, whose value *is* a chip, does not.
+        compose.onNodeWithTag("swipe-preset-5").assertIsSelected()
+        assertEquals(0, countTagged("swipe-slider"))
+    }
+
+    /**
+     * The slider passes straight over 5, 15 and 30 on its way anywhere. Deriving
+     * "is this custom?" from the value would snap the sheet shut mid-drag.
+     */
+    @Test fun the_slider_stays_open_when_it_lands_on_a_chip_value() {
+        show(minutes = 47)
+        tap("nag-custom")
+        slide("nag-slider", 30)
+        assertEquals(30, nagMinutes.intValue)
+        compose.onNodeWithTag("nag-slider").assertIsDisplayed()
+        compose.onNodeWithTag("nag-custom").assertIsSelected()
+        compose.onNodeWithTag("nag-preset-30").assertIsNotSelected()
+    }
+
+    /** …and picking a chip is what closes it again. */
+    @Test fun choosing_a_chip_puts_the_slider_away() {
+        show(minutes = 47)
+        compose.onNodeWithTag("nag-slider").assertIsDisplayed()
+        tap("nag-preset-15")
+        assertEquals(15, nagMinutes.intValue)
+        assertEquals(0, countTagged("nag-slider"))
+        compose.onNodeWithTag("nag-preset-15").assertIsSelected()
+    }
+
+    @Test fun the_swipe_card_has_a_slider_of_its_own() {
+        show(minutes = 5, swipe = 5)
+        tap("swipe-custom")
+        slide("swipe-slider", 90)
+        assertEquals(90, swipeMinutes.intValue)
+        assertEquals("the other card is untouched", 5, nagMinutes.intValue)
+        compose.onNodeWithTag("swipe-readout").assertTextEquals("90 min")
+        assertEquals(0, countTagged("nag-slider"))
     }
 
     // ---- dismissal ----------------------------------------------------------
@@ -327,5 +351,19 @@ class SettingsSheetTest {
         compose.onNodeWithTag("sheet-scrim")
             .performSemanticsAction(SemanticsActions.OnClick)
         assertEquals(true, dismissed)
+    }
+
+    /**
+     * Nothing is held back, so closing has nothing to rescue. This pins the
+     * simplification: the typed field this replaced had to be clamped on the way
+     * out, and a chip or a slider cannot leave an out-of-range value behind.
+     */
+    @Test fun closing_changes_nothing_by_itself() {
+        show(minutes = 12, swipe = 20)
+        compose.onNodeWithContentDescription("Close")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+        assertEquals(12, nagMinutes.intValue)
+        assertEquals(20, swipeMinutes.intValue)
     }
 }

@@ -89,7 +89,7 @@ adb shell am start -n com.wgorski.peskyreminders/.MainActivity
 
 Two tiers, and they cover different things.
 
-**Deterministic (JVM, ~12s, no device)** — `app/src/test/`, 240 tests. Robolectric hosts
+**Deterministic (JVM, ~12s, no device)** — `app/src/test/`, 282 tests. Robolectric hosts
 the real composables, and every screen takes `nowMillis` as a parameter instead of
 reading the clock, so each expected label is a fixed string. `TaskTimeTest` covers the
 date maths; `TaskListScreenTest`, `AddTaskSheetTest` and `EditTaskSheetTest` drive
@@ -323,7 +323,8 @@ app/src/main/java/com/wgorski/peskyreminders/
     TaskListScreen.kt   # header, the DueGroup bands + Done section, FAB, tap/hold routing
     TaskSheet.kt        # add AND edit in one: name, repeat, save, the action rows
     TimePickers.kt      # the wheels and the month grid — shared by both paths
-    SettingsSheet.kt    # nag on/off + interval, and how long a swipe snoozes
+    SettingsSheet.kt    # two cards: nag on/off + interval, and the swipe snooze
+    PeskySlider.kt      # the shared whole-number slider — pure mapping, unit-tested
     ReminderSheet.kt    # Done, 15/30/1h/3h + time-of-day chips, 5 min–72 hr wheel
     ConfirmSheet.kt     # shared "are you sure?" chrome — every delete goes through it
     ClearDoneSheet.kt   # confirms CLEAR (the whole done list)
@@ -340,12 +341,13 @@ app/src/test/               # deterministic JVM suite (Robolectric-hosted Compos
   ui/TaskListScreenTest.kt  #   the date bands, toggles, FAB
   ui/AddTaskSheetTest.kt    #   every control in the add sheet
   ui/EditTaskSheetTest.kt   #   seeding, one-field edits, the action rows
-  ui/SettingsSheetTest.kt   #   the nag switch and interval field
+  ui/SettingsSheetTest.kt   #   the nag switch, the chips and the custom slider
+  ui/PeskySliderTest.kt     #   the slider's arithmetic, exactly
   ui/ReminderSheetTest.kt   #   Done, chips, wheel, one-tap commit
   ui/PeskySheetTest.kt      #   the drag rule (pure) + what the drag must not break
   ui/ClearDoneSheetTest.kt  #   the clear-done confirmation
   ui/DeleteTaskSheetTest.kt #   the delete-one-task confirmation
-  SettingsTest.kt           #   interval clamping
+  SettingsTest.kt           #   interval clamping, the presets, the summary sentence
   SnoozeOptionsTest.kt      #   snooze durations and labels
   ActionToastTest.kt        #   every sentence a snooze or done can produce
   ActionToastShowTest.kt    #   that it reaches the screen, and reads the task after
@@ -491,12 +493,14 @@ Two emulator facts, learned the hard way while verifying this:
   once — wheels, tabs, calendar cells, chips, Save, list rows, and the sheets'
   tap-swallow layer, which is a `tap {}` onto nothing. A `BasicTextField` is neither
   of those, so tapping the field itself never routes through it. Don't add a second
-  copy anywhere. The one caller that notices is the settings interval, which clamps
-  on focus loss — wanted, and already tested.
+  copy anywhere. The task sheet's name field is the only text field left in the app,
+  so it is the only place the rule has anything to release.
 - **Never lose a typed value on focus alone.** Hiding the keyboard does NOT clear
   Compose focus, so `onFocusChanged` never fires and the value is silently dropped.
-  The settings interval commits on each keystroke once it parses in range, and
-  clamps on Done/dismiss. Same trap applies to any future field.
+  The settings sheet used to be the live example of this and no longer is — its two
+  intervals are chips and a slider now, and neither can be left half-entered. The
+  trap still applies to **any** future field: commit on the keystroke, and treat
+  focus loss as a backstop rather than the moment of truth.
 - **A repeating task is never "done".** Ticking it rolls it forward to the next
   occurrence; only `Repeat.ONCE` tasks flip to done. This is design behaviour, and
   `Reminders.toggle` is the single place it is implemented — the notification's Done
@@ -603,11 +607,8 @@ Two emulator facts, learned the hard way while verifying this:
     not the nag's, even though all six numbers coincide today — different questions,
     free to diverge. Same call `SnoozeOptions.UNTIL_HOURS` makes about `TaskTime`'s
     morning hour.
-  - **`MinutesRow` is shared, not copied.** It carries the *never lose a typed value on
-    focus alone* fix, so a second copy would drift at the first change to either. Both
-    drafts are hoisted into `SettingsSheet` so dismissing clamps **both** — and both
-    unit labels are tagged (`$tag-unit`), because `onNodeWithText("minutes")` now
-    matches two nodes. Same lesson as the hour chips; don't switch them back.
+  - **`MinutesPicker` is shared, not copied** — see the settings-sheet bullet below
+    for what it is and what holds it together.
   - **`ACTION_REPOST` became `ACTION_SWIPED`** (slot value 2 unchanged, so no request
     code moved). `Reminders.repost` stays — an edit that leaves a task overdue and a
     `snoozeUntil` onto a past time still call it — it is only unreachable by broadcast.
@@ -666,6 +667,50 @@ Two emulator facts, learned the hard way while verifying this:
   Delete acts immediately and drops unsaved edits. There is deliberately no
   mark-as-done row — the list's check circle does that in one tap, and offering it
   twice invited the question of whether it saved the draft on the way past.
+- **The settings sheet is two cards and a sentence, and nothing in it is held back.**
+  Each card is a name, a description, and — below a hairline — a count of minutes
+  picked off `5 / 15 / 30 / Custom`, where Custom opens a slider over the whole
+  range. Both chips and slider commit on the touch, like the reminder sheet's do.
+  Seven things worth keeping:
+  - **The typed field is gone, and so is everything that propped it up.** No
+    clamp-on-dismiss, no `onMinutesTyped`, no range hint, no `-unit` pluralisation:
+    a chip or a slider cannot produce an out-of-range value, so there is nothing to
+    rescue on the way out. `Settings.coerceMinutes` stays — it still guards what
+    `hydrate` reads back off disk.
+  - **The slider commits on release, not on movement.** `PeskySlider` reports twice
+    for this reason: `onValueChange` all the way through so the readout follows the
+    thumb, `onCommit` once. `onNagMinutes` re-arms every showing reminder's alarm
+    through `Reminders.applyNagSettings`, which must not run once a frame. Verified
+    on the emulator: a full drag leaves **one** `nag_minutes` entry.
+  - **Its gesture is `draggable`, not `pointerInput`.** Horizontal orientation is
+    what leaves a vertical drag to the scrolling body instead of swallowing it. The
+    price is that a bare tap on the track does nothing — deliberate, since a stray
+    tap while scrolling past should not change a setting — and `onDragStarted`'s
+    position is what still makes the thumb jump to the finger.
+  - **The mapping is pure and the drag is an emulator check.** `sliderFraction` /
+    `sliderValue` / `sliderFractionAt` are unit-tested exactly, including the round
+    trip; the composable publishes `ProgressBarRangeInfo` and `setProgress` **in the
+    real unit**, which is both what a screen reader adjusts and the seam the JVM
+    tests drive. Same shape as `shouldDismiss`. Don't "restore" a drag test.
+  - **`custom` is sticky and must not be re-derived from the value.** The slider
+    passes straight over 5, 15 and 30 on its way anywhere, so keying that flag on
+    the stored minutes would snap the sheet shut mid-drag. It only guesses on the
+    way in, which is what makes a stored 47 open on the slider.
+  - **Nagging off removes the interval block rather than greying it.** A disabled row
+    costs its full height to say nothing, and the switch above it has already
+    explained the absence. The hairline goes with it, so the card closes up.
+  - **The Custom chip is deliberately wider than the other three** (`weight(1.3f)`).
+    "Custom" is the same six characters as "30 min" but in far wider glyphs, and four
+    exactly-equal columns clipped it to "Custo" at font scale 1.3 — which was also a
+    mistranslation of the design's `flex:1`, since CSS will not crush a chip below
+    its content width. **1.5 is the ceiling**; past there the presets run out
+    instead. Check any change to that row at 1.3, not just at the default.
+  Every minute count in the sheet is written by `Settings.minutesLabel`, which stays
+  in minutes all the way up — deliberately **not** `SnoozeOptions.label`, which would
+  coarsen 90 to "1h 30" and leave the readout disagreeing with the marks at the ends
+  of its own track. The closing sentence is `Settings.summarise`, pure and beside the
+  values it describes for the same reason every string `ActionToast` can say lives in
+  one place.
 - **The task sheet only just fits, so watch its height.** `PeskySheet` caps itself at
   **95%** of the screen and the body scrolls past that. With a repeater's Delete row
   the content came to ~723dp against a 766dp ceiling on a 440dpi 2340px phone — a 5%

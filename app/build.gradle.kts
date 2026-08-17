@@ -39,10 +39,10 @@ android {
         applicationId = "com.wgorski.peskyreminders"
         minSdk = 26
         targetSdk = 36
-        versionCode = 33
+        versionCode = 34
         // Single source of truth for the release version. Semver; bump once per
         // branch/session (minor for features, patch for fixes) — see CLAUDE.md.
-        versionName = "1.0.0"
+        versionName = "1.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
