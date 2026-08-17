@@ -107,6 +107,18 @@ The reminder still can't be cleared by a swipe, and Clear all still skips it.
 
 ---
 
+## 1.1.0 — en-GB
+
+302 of 500 characters.
+
+```
+Settings has been rebuilt. Each of the two timings — how often a reminder buzzes, and how long swiping one away hides it for — now sits in its own card, set from 5, 15 or 30 minutes in a tap, or dragged anywhere from 1 to 180 on a slider.
+
+A line at the foot reads back what the pair of them add up to.
+```
+
+---
+
 ## Format for later releases
 
 Describe what changed for the user, not what changed in the code. The list rows
