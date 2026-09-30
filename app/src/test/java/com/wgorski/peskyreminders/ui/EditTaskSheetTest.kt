@@ -19,6 +19,7 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.wgorski.peskyreminders.Repeat
+import com.wgorski.peskyreminders.RepeatUnit
 import com.wgorski.peskyreminders.Task
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -342,5 +343,28 @@ class EditTaskSheetTest {
         tapTag("sheet-scrim")
         assertTrue(dismissed)
         assertEquals(null, savedName)
+    }
+
+    // ---- custom repeat ------------------------------------------------------
+
+    @Test fun a_stored_custom_rule_is_spelt_out_and_reopens_as_itself() {
+        val weekdays = setOf(
+            Calendar.MONDAY, Calendar.TUESDAY, Calendar.WEDNESDAY, Calendar.THURSDAY, Calendar.FRIDAY,
+        )
+        showSheet(Task(11, "Stand-up", at(2026, Calendar.JULY, 27, 9), Repeat(RepeatUnit.WEEK, weekdays = weekdays)))
+        compose.onNodeWithTag("repeat-summary").assertTextEquals("Weekly on Mon–Fri")
+        tapTag("repeat-Custom")
+        compose.onNodeWithTag("custom-readout").assertTextEquals("Weekly on Mon–Fri")
+        // A custom rule repeats, so it keeps the only way out a repeater has.
+        compose.onNodeWithTag("action-delete").assertExists()
+    }
+
+    /** What the store holds for a Weekly task is bound to its weekday; it still reads as Weekly. */
+    @Test fun a_stored_bound_preset_shows_as_the_preset() {
+        val bound = Repeat(RepeatUnit.WEEK, weekdays = setOf(Calendar.WEDNESDAY))
+        showSheet(weekly.copy(repeat = bound))
+        compose.onNodeWithTag("repeat-summary").assertDoesNotExist()
+        tapTag("save-button")
+        assertEquals(Repeat.WEEKLY, savedRepeat)
     }
 }

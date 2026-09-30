@@ -14,7 +14,8 @@ full **"Pesky Reminders v2"** Claude Design UI on top of it: a task list banded 
 when things are due (Overdue / Today / Tomorrow / This week / Next week / Later)
 plus a collapsible Done section, and one bottom sheet that both adds
 and edits — a name, a time picked either on scroll wheels or on a calendar, and a
-repeat rule. **Tapping an overdue task opens the action panel** (Done + snooze);
+repeat rule: a preset, or a custom "every N days / weeks / months / years" on
+chosen days. **Tapping an overdue task opens the action panel** (Done + snooze);
 tapping anything else opens it for editing, and **holding any active row** opens the
 editor whatever its band.
 
@@ -89,7 +90,7 @@ adb shell am start -n com.wgorski.peskyreminders/.MainActivity
 
 Two tiers, and they cover different things.
 
-**Deterministic (JVM, ~12s, no device)** — `app/src/test/`, 282 tests. Robolectric hosts
+**Deterministic (JVM, ~12s, no device)** — `app/src/test/`, 329 tests. Robolectric hosts
 the real composables, and every screen takes `nowMillis` as a parameter instead of
 reading the clock, so each expected label is a fixed string. `TaskTimeTest` covers the
 date maths; `TaskListScreenTest`, `AddTaskSheetTest` and `EditTaskSheetTest` drive
@@ -102,7 +103,7 @@ every control in the UI. Tests pin `TimeZone` to UTC so they pass on any machine
 - They also gate `git push` via `.githooks/pre-push`. Enable once per clone:
   `git config core.hooksPath .githooks`. Bypass with `git push --no-verify`.
 
-**Device (emulator)** — `app/src/androidTest/`, 68 tests. `ReminderModelTest` is the
+**Device (emulator)** — `app/src/androidTest/`, 69 tests. `ReminderModelTest` is the
 real proof of the notification model: it fires the notification's own delete-intent,
 which is exactly what the OS sends on a swipe. Note it calls `TaskStore.clear()`, so
 running it **wipes the task list on the device**.
@@ -303,6 +304,7 @@ app/src/main/java/com/wgorski/peskyreminders/
   MainActivity.kt       # edge-to-edge host; hydrates the store, asks for POST_NOTIFICATIONS
   Task.kt               # Task + Repeat model, incl. the snooze anchor (slotMillis)
   TaskTime.kt           # PURE date maths, labels & DueGroup banding — unit-tested
+  Recurrence.kt         # PURE repeat-rule maths: step, snap, bind, normalise, describe
   TaskStore.kt          # SharedPreferences-backed list, observable via mutableStateOf
   Settings.kt           # user prefs (nag on/off + interval), same lazy-hydrate pattern
   Reminders.kt          # facade where the store and the alarm/notification plumbing meet
@@ -322,6 +324,7 @@ app/src/main/java/com/wgorski/peskyreminders/
     PeskyApp.kt         # root: sheet + done-section state, the "now" ticker
     TaskListScreen.kt   # header, the DueGroup bands + Done section, FAB, tap/hold routing
     TaskSheet.kt        # add AND edit in one: name, repeat, save, the action rows
+    CustomRepeatSheet.kt # every N units, on which days — raised over TaskSheet
     TimePickers.kt      # the wheels and the month grid — shared by both paths
     SettingsSheet.kt    # two cards: nag on/off + interval, and the swipe snooze
     PeskySlider.kt      # the shared whole-number slider — pure mapping, unit-tested
@@ -338,6 +341,8 @@ app/src/main/res/
 app/src/test/               # deterministic JVM suite (Robolectric-hosted Compose)
   ReminderContractTest.kt   #   scheduling arithmetic
   TaskTimeTest.kt           #   date maths and labels
+  RecurrenceTest.kt         #   every rule shape: stepping, snapping, wording
+  TaskStoreTest.kt          #   rules on disk, and lists saved before rules existed
   ui/TaskListScreenTest.kt  #   the date bands, toggles, FAB
   ui/AddTaskSheetTest.kt    #   every control in the add sheet
   ui/EditTaskSheetTest.kt   #   seeding, one-field edits, the action rows
@@ -501,6 +506,36 @@ Two emulator facts, learned the hard way while verifying this:
   intervals are chips and a slider now, and neither can be left half-entered. The
   trap still applies to **any** future field: commit on the keystroke, and treat
   focus loss as a backstop rather than the moment of truth.
+- **A repeat rule is `Repeat`, and a preset is just a loose one.** `Repeat` is a data
+  class — every N `RepeatUnit`s, plus the weekdays of a week or the day / Nth weekday
+  of a month — and `ONCE / DAILY / WEEKLY / MONTHLY` are named values of it. All the
+  date maths is in `Recurrence`, pure like `TaskTime`. Five things hold it together:
+  - **Presets follow the date; a custom rule constrains it.** `WEEKLY` names no
+    weekday, so moving the task moves the rule. A custom rule names its days, so the
+    sheet snaps the draft date forward to `firstMatchOnOrAfter` — on Done, and on
+    every date pick while it is active — keeping the time. That guarantee (the slot
+    is always an occurrence) is why `nextOccurrence` can step from the slot with no
+    stored series start. Don't add a code path that saves a custom rule on a date it
+    does not name.
+  - **The store keeps rules bound.** `TaskStore.add` and `Reminders.update` run
+    `Recurrence.bindTo`, so a Monthly task set on the 31st stores day 31 and comes
+    back to the 31st after February instead of drifting to the 28th. Compare a stored
+    rule to a preset through `Recurrence.normalise(rule, date)`, never with `==` —
+    the instrumented tests do exactly that.
+  - **`normalise` is what decides which chip lights.** A custom rule a preset can say
+    on that date *is* the preset — "every 1 week on Wed" on a Wednesday is Weekly,
+    "monthly on the 15th" once the date has snapped to the 15th is Monthly — so Custom
+    only ever means something the presets cannot express. Two tests pin that.
+  - **A custom rule is spelt out on the Repeat label line, not in its chip.** The
+    sentence cannot fit after Monthly; in the chip it would scroll the presets away
+    every time such a task opens. The line already existed, so it costs no height.
+    At a large font scale Custom is the chip pushed off the edge, so the row scrolls
+    to it when it is the chosen one.
+  - **`"repeat"` on disk is still the label.** `TaskStore` writes the preset name or
+    "Custom" beside a `"rule"` object; a task with no `"rule"` is from before rules
+    and is bound to its slot on read, which is how existing lists load unchanged.
+    There is no "5th weekday" and no end condition, on purpose — a reminder that
+    silently skips months is worse than none, and "Last" covers the intent.
 - **A repeating task is never "done".** Ticking it rolls it forward to the next
   occurrence; only `Repeat.ONCE` tasks flip to done. This is design behaviour, and
   `Reminders.toggle` is the single place it is implemented — the notification's Done
@@ -862,7 +897,7 @@ Two emulator facts, learned the hard way while verifying this:
   collapsed.
 - **The wheels cannot always point at the task.** The DAY column spans a fortnight, so
   anything further out — or already past — shows nothing selected there; the MIN column
-  is quarter-hours, so a snoozed task sitting at :07 shows nothing selected either. The
+  steps in fives, so a snoozed task sitting at :07 shows nothing selected either. The
   footer readout always states the real due time and the calendar opens on the task's
   own month, so nothing is misreported; the wheel just cannot point at it.
 - **No undo.** Neither `delete` nor `clearDone` keeps a tombstone, which is why both

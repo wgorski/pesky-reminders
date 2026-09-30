@@ -266,7 +266,8 @@ object Reminders {
         val next = task.copy(
             name = name,
             dueMillis = dueMillis,
-            repeat = repeat,
+            // Bound to the new date, as [TaskStore.add] binds a new task's.
+            repeat = Recurrence.bindTo(repeat, dueMillis),
             anchorMillis = null,
         )
         TaskStore.replace(context, next)

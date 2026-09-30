@@ -29,6 +29,8 @@ enum class DueGroup(val label: String) {
 object TaskTime {
 
     private val WEEKDAYS = arrayOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+    private val WEEKDAYS_FULL =
+        arrayOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
     private val MONTHS =
         arrayOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
     private val MONTHS_FULL = arrayOf(
@@ -137,21 +139,11 @@ object TaskTime {
 
     /**
      * The first occurrence strictly after [nowMillis], stepping from [dueMillis]
-     * by [repeat]. Returns [dueMillis] unchanged for [Repeat.ONCE].
+     * by [repeat]. Returns [dueMillis] unchanged for [Repeat.ONCE]. The rule maths
+     * lives in [Recurrence]; this stays as the name the rest of the app calls.
      */
-    fun nextOccurrence(dueMillis: Long, repeat: Repeat, nowMillis: Long): Long {
-        if (repeat == Repeat.ONCE) return dueMillis
-        val c = cal(dueMillis)
-        do {
-            when (repeat) {
-                Repeat.DAILY -> c.add(Calendar.DAY_OF_MONTH, 1)
-                Repeat.WEEKLY -> c.add(Calendar.DAY_OF_MONTH, 7)
-                Repeat.MONTHLY -> c.add(Calendar.MONTH, 1)
-                Repeat.ONCE -> Unit
-            }
-        } while (c.timeInMillis <= nowMillis)
-        return c.timeInMillis
-    }
+    fun nextOccurrence(dueMillis: Long, repeat: Repeat, nowMillis: Long): Long =
+        Recurrence.nextOccurrence(dueMillis, repeat, nowMillis)
 
     // ---- picking a time -----------------------------------------------------
 
@@ -273,10 +265,26 @@ object TaskTime {
      * English initials, merely rotated: [WEEKDAYS] is English and localising
      * day names is a separate job.
      */
-    fun weekdayInitials(): List<String> {
-        val first = Calendar.getInstance().firstDayOfWeek - 1
-        return List(7) { WEEKDAYS[(first + it) % 7].take(1) }
+    fun weekdayInitials(): List<String> = weekdayOrder().map { weekdayShort(it).take(1) }
+
+    /**
+     * `Calendar.SUNDAY..SATURDAY`, rotated so the first is the locale's first day
+     * of week. The one ordering every week-shaped control and rule goes through —
+     * the grid's header, the custom-repeat toggles, and how [Recurrence] steps
+     * through a week — so none of them can start the week on a different day.
+     */
+    fun weekdayOrder(): List<Int> {
+        val first = Calendar.getInstance().firstDayOfWeek
+        return List(7) { (first - 1 + it) % 7 + 1 }
     }
+
+    /** "Mon", for a `Calendar.DAY_OF_WEEK`. */
+    fun weekdayShort(dayOfWeek: Int): String = WEEKDAYS[dayOfWeek - 1]
+
+    /** "Monday", for a `Calendar.DAY_OF_WEEK`. */
+    fun weekdayLong(dayOfWeek: Int): String = WEEKDAYS_FULL[dayOfWeek - 1]
+
+    fun dayOfWeekOf(millis: Long): Int = cal(millis).get(Calendar.DAY_OF_WEEK)
 
     // ---- internals ----------------------------------------------------------
 

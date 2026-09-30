@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -26,6 +27,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -39,8 +41,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.wgorski.peskyreminders.Recurrence
 import com.wgorski.peskyreminders.Repeat
 import com.wgorski.peskyreminders.Task
 import com.wgorski.peskyreminders.TaskTime
@@ -126,63 +131,100 @@ private fun TaskSheet(
         mutableLongStateOf(existing?.dueMillis ?: TaskTime.defaultDue(nowMillis))
     }
     var mode by rememberSaveable(key) { mutableStateOf(EntryMode.WHEELS) }
-    var repeat by rememberSaveable(key) { mutableStateOf(existing?.repeat ?: Repeat.ONCE) }
+    // A preset is held loose, so it follows the date; anything else is a custom
+    // rule, which the date has to obey — see [commit].
+    var repeat by rememberSaveable(key, stateSaver = RepeatSaver) {
+        mutableStateOf(existing?.let { Recurrence.normalise(it.repeat, it.dueMillis) } ?: Repeat.ONCE)
+    }
+    var customOpen by rememberSaveable(key) { mutableStateOf(false) }
     // Open the calendar on the month the task is due in, not on this one.
     var calOffset by rememberSaveable(key) {
         mutableIntStateOf(existing?.let { TaskTime.monthOffsetOf(it.dueMillis, nowMillis) } ?: 0)
     }
 
-    val commit: (Long) -> Unit = { dueMillis = it }
+    // Under a custom rule a picked date that the rule does not name moves on to
+    // the first one it does, keeping the time; the readout says where it went.
+    // The calendar follows it there, or the selection would vanish off the page.
+    val commit: (Long) -> Unit = { picked ->
+        val landed = if (Recurrence.isCustom(repeat)) Recurrence.firstMatchOnOrAfter(picked, repeat) else picked
+        if (landed != picked) calOffset = TaskTime.monthOffsetOf(landed, nowMillis)
+        dueMillis = landed
+    }
     val canSave = name.isNotBlank()
 
-    PeskySheet(
-        title = if (existing == null) "New pester" else "Edit pester",
-        onDismiss = onDismiss,
-        footer = {
-            SheetFooter(
-                nowMillis = nowMillis,
-                use24h = use24h,
-                dueMillis = dueMillis,
-                repeat = repeat,
-                onRepeat = { repeat = it },
-                editing = existing != null,
-                canSave = canSave,
-                onSave = { onSave(name.trim(), dueMillis, repeat) },
-            )
-        },
-    ) {
-        // A new pester opens with the keyboard already up; an edit does not.
-        NameField(name, autoFocus = existing == null) { name = it }
-
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("When?", style = PeskyType.FieldLabel)
-            ModeTabs(mode) { mode = it }
-
-            when (mode) {
-                EntryMode.CALENDAR -> CalendarPicker(
+    Box(Modifier.fillMaxSize()) {
+        PeskySheet(
+            title = if (existing == null) "New pester" else "Edit pester",
+            onDismiss = onDismiss,
+            footer = {
+                SheetFooter(
                     nowMillis = nowMillis,
                     use24h = use24h,
                     dueMillis = dueMillis,
-                    monthOffset = calOffset,
-                    onMonthShift = { calOffset += it },
-                    onCommit = commit,
+                    repeat = repeat,
+                    onRepeat = { repeat = it },
+                    onCustom = { customOpen = true },
+                    editing = existing != null,
+                    canSave = canSave,
+                    onSave = { onSave(name.trim(), dueMillis, repeat) },
                 )
+            },
+        ) {
+            // A new pester opens with the keyboard already up; an edit does not.
+            NameField(name, autoFocus = existing == null) { name = it }
 
-                EntryMode.WHEELS -> Wheels(
-                    nowMillis = nowMillis,
-                    use24h = use24h,
-                    dueMillis = dueMillis,
-                    onCommit = commit,
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("When?", style = PeskyType.FieldLabel)
+                ModeTabs(mode) { mode = it }
+
+                when (mode) {
+                    EntryMode.CALENDAR -> CalendarPicker(
+                        nowMillis = nowMillis,
+                        use24h = use24h,
+                        dueMillis = dueMillis,
+                        monthOffset = calOffset,
+                        onMonthShift = { calOffset += it },
+                        onCommit = commit,
+                    )
+
+                    EntryMode.WHEELS -> Wheels(
+                        nowMillis = nowMillis,
+                        use24h = use24h,
+                        dueMillis = dueMillis,
+                        onCommit = commit,
+                    )
+                }
+            }
+
+            // Only repeaters get one, because only they need one — see [TaskActions].
+            if (existing != null && existing.repeats) {
+                TaskActions(onDelete = onDelete)
             }
         }
 
-        // Only repeaters get one, because only they need one — see [TaskActions].
-        if (existing != null && existing.repeats) {
-            TaskActions(onDelete = onDelete)
+        // Composed after the task sheet, so it draws — and takes Back — on top of it.
+        if (customOpen) {
+            CustomRepeatSheet(
+                seed = repeat,
+                dueMillis = dueMillis,
+                onDismiss = { customOpen = false },
+                onDone = { rule ->
+                    customOpen = false
+                    val landed = Recurrence.firstMatchOnOrAfter(dueMillis, rule)
+                    repeat = Recurrence.normalise(rule, landed)
+                    if (landed != dueMillis) calOffset = TaskTime.monthOffsetOf(landed, nowMillis)
+                    dueMillis = landed
+                },
+            )
         }
     }
 }
+
+/** The draft rule through process death — [Repeat.toInts] is the whole state. */
+private val RepeatSaver = listSaver<Repeat, Int>(
+    save = { it.toInts() },
+    restore = { Repeat.fromInts(it) },
+)
 
 /**
  * Takes focus on open when [autoFocus] is set, which is the add path only.
@@ -313,6 +355,7 @@ private fun SheetFooter(
     dueMillis: Long,
     repeat: Repeat,
     onRepeat: (Repeat) -> Unit,
+    onCustom: () -> Unit,
     editing: Boolean,
     canSave: Boolean,
     onSave: () -> Unit,
@@ -348,7 +391,7 @@ private fun SheetFooter(
             )
         }
 
-        RepeatRow(repeat, onRepeat)
+        RepeatRow(repeat, dueMillis, onRepeat, onCustom)
 
         Box(
             modifier = Modifier
@@ -373,47 +416,85 @@ private fun SheetFooter(
 }
 
 /**
- * The four repeat rules, always on one line.
+ * The four presets and Custom, always on one line.
  *
  * The label sits above rather than beside them: inline, it stole just enough
  * width that "Monthly" dropped onto a second row and the footer grew a step. The
  * row scrolls sideways so a large font scale pushes the last chip off the edge
  * instead of wrapping — one row, whatever the text size.
+ *
+ * A custom rule is spelt out on the label line, not in its chip: a sentence like
+ * "Every 2 weeks on Mon, Wed" cannot fit after Monthly, and the row would have to
+ * scroll the presets out of sight every time such a task was opened. The label
+ * line was already there, so this costs the sheet no height.
  */
 @Composable
-private fun RepeatRow(repeat: Repeat, onRepeat: (Repeat) -> Unit) {
+private fun RepeatRow(
+    repeat: Repeat,
+    dueMillis: Long,
+    onRepeat: (Repeat) -> Unit,
+    onCustom: () -> Unit,
+) {
+    val custom = Recurrence.isCustom(repeat)
+    // Custom is the last chip, so at a large font scale it is the one pushed off
+    // the edge. When it is the chosen one, bring it into view.
+    val chipScroll = rememberScrollState()
+    LaunchedEffect(custom) {
+        if (custom) chipScroll.animateScrollTo(chipScroll.maxValue)
+    }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Repeat", style = PeskyType.FieldLabel)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Repeat", style = PeskyType.FieldLabel)
+            if (custom) {
+                Text(
+                    Recurrence.describe(repeat, dueMillis),
+                    modifier = Modifier.weight(1f).padding(start = 12.dp).testTag("repeat-summary"),
+                    style = PeskyType.FieldLabel,
+                    fontWeight = FontWeight.Bold,
+                    color = PeskyColors.AccentBright,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
+                .horizontalScroll(chipScroll),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Repeat.entries.forEach { option ->
-                val selected = repeat == option
-                Box(
-                    modifier = Modifier
-                        .testTag("repeat-${option.label}")
-                        .pressable(scale = 0.96f) { onRepeat(option) }
-                        .clip(CircleShape)
-                        .background(if (selected) PeskyColors.AccentWash else PeskyColors.Field)
-                        .border(
-                            1.dp,
-                            if (selected) PeskyColors.Accent else PeskyColors.FieldBorder,
-                            CircleShape,
-                        )
-                        .padding(horizontal = 12.dp, vertical = 5.dp),
-                ) {
-                    Text(
-                        option.label,
-                        fontFamily = DmSans,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = PeskyColors.Text,
-                    )
-                }
+            Repeat.PRESETS.forEach { option ->
+                RepeatChip(option.label, selected = repeat == option) { onRepeat(option) }
             }
+            // Opens the editor rather than choosing anything itself; on an active
+            // custom rule that is how you change it.
+            RepeatChip(Repeat.CUSTOM_LABEL, selected = custom, onClick = onCustom)
         }
+    }
+}
+
+@Composable
+private fun RepeatChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .testTag("repeat-$label")
+            .pressable(scale = 0.96f, onClick = onClick)
+            .clip(CircleShape)
+            .background(if (selected) PeskyColors.AccentWash else PeskyColors.Field)
+            .border(
+                1.dp,
+                if (selected) PeskyColors.Accent else PeskyColors.FieldBorder,
+                CircleShape,
+            )
+            .padding(horizontal = 12.dp, vertical = 5.dp),
+    ) {
+        Text(
+            label,
+            fontFamily = DmSans,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = PeskyColors.Text,
+        )
     }
 }

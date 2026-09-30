@@ -7,9 +7,13 @@ import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -19,6 +23,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.wgorski.peskyreminders.Repeat
+import com.wgorski.peskyreminders.RepeatUnit
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -267,7 +272,7 @@ class AddTaskSheetTest {
         tapWheel("HOUR", 21)
         dueLabel().assertTextEquals("Tue, 9:00 PM")
 
-        tapWheel("MIN", 2)
+        tapWheel("MIN", 6)
         dueLabel().assertTextEquals("Tue, 9:30 PM")
     }
 
@@ -410,13 +415,13 @@ class AddTaskSheetTest {
     }
 
     /**
-     * All four rules stay reachable on one line. "Monthly" used to wrap onto a
-     * second row, which grew the footer by a step.
+     * All four presets and Custom stay reachable on one line. "Monthly" used to
+     * wrap onto a second row, which grew the footer by a step.
      */
     @Test fun every_repeat_rule_sits_in_the_row() {
         showSheet()
-        Repeat.entries.forEach { option ->
-            compose.onNodeWithTag("repeat-${option.label}").assertExists()
+        (Repeat.PRESETS.map { it.label } + "Custom").forEach { label ->
+            compose.onNodeWithTag("repeat-$label").assertExists()
         }
     }
 
@@ -435,6 +440,188 @@ class AddTaskSheetTest {
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
         assertEquals(expected, savedDue)
+    }
+
+    // ---- the minute wheel ---------------------------------------------------
+
+    @Test fun the_minute_wheel_steps_every_five_minutes() {
+        showSheet()
+        compose.onNodeWithTag("wheel-MIN").performScrollToNode(hasTestTag("MIN-11"))
+        compose.onNodeWithTag("MIN-11").assertTextEquals(":55")
+        tapWheel("MIN", 7)
+        dueLabel().assertTextEquals("Today, 3:35 PM")
+    }
+
+    // ---- custom repeat ------------------------------------------------------
+    //
+    // The sheet opens on Saturday 25 July, 3:00 PM.
+
+    private fun openCustom() = tapTag("repeat-Custom")
+
+    private fun readout() = compose.onNodeWithTag("custom-readout")
+
+    @Test fun custom_opens_on_every_week_on_the_tasks_own_weekday() {
+        showSheet()
+        openCustom()
+        readout().assertTextEquals("Weekly on Sat")
+        compose.onNodeWithTag("custom-weekday-${Calendar.SATURDAY}").assertIsSelected()
+        compose.onNodeWithTag("custom-weekday-${Calendar.MONDAY}").assertIsNotSelected()
+    }
+
+    @Test fun a_custom_weekly_rule_moves_the_date_onto_it_and_is_spelt_out() {
+        showSheet()
+        typeName()
+        openCustom()
+        tapTag("custom-weekday-${Calendar.MONDAY}")
+        tapTag("custom-weekday-${Calendar.SATURDAY}")
+        tapTag("custom-every-plus")
+        readout().assertTextEquals("Every 2 weeks on Mon")
+        tapTag("custom-done")
+
+        dueLabel().assertTextEquals("Mon, 3:00 PM")
+        compose.onNodeWithTag("repeat-summary").assertTextEquals("Every 2 weeks on Mon")
+        compose.onNodeWithTag("custom-readout").assertDoesNotExist()
+
+        tapTag("save-button")
+        assertEquals(Repeat(RepeatUnit.WEEK, 2, weekdays = setOf(Calendar.MONDAY)), savedRepeat)
+        assertEquals(
+            Calendar.getInstance().apply {
+                set(2026, Calendar.JULY, 27, 15, 0, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis,
+            savedDue,
+        )
+    }
+
+    @Test fun the_last_ticked_day_stays_ticked() {
+        showSheet()
+        openCustom()
+        tapTag("custom-weekday-${Calendar.SATURDAY}")
+        compose.onNodeWithTag("custom-weekday-${Calendar.SATURDAY}").assertIsSelected()
+        readout().assertTextEquals("Weekly on Sat")
+    }
+
+    @Test fun the_count_never_drops_below_one_and_the_units_pluralise() {
+        showSheet()
+        openCustom()
+        tapTag("custom-every-minus")
+        compose.onNodeWithTag("custom-every").assertTextEquals("1")
+        compose.onNodeWithTag("custom-unit-DAY").assertTextEquals("day")
+        tapTag("custom-every-plus")
+        compose.onNodeWithTag("custom-unit-DAY").assertTextEquals("days")
+    }
+
+    @Test fun days_and_years_ask_for_no_days() {
+        showSheet()
+        openCustom()
+        tapTag("custom-unit-DAY")
+        compose.onNodeWithTag("custom-weekday-${Calendar.MONDAY}").assertDoesNotExist()
+        tapTag("custom-unit-YEAR")
+        compose.onNodeWithTag("custom-weekday-${Calendar.MONDAY}").assertDoesNotExist()
+        readout().assertTextEquals("Yearly")
+    }
+
+    @Test fun a_month_can_repeat_on_any_date_not_just_the_tasks() {
+        showSheet()
+        typeName()
+        openCustom()
+        tapTag("custom-unit-MONTH")
+        compose.onNodeWithTag("custom-monthday-25").assertIsSelected()
+        tapTag("custom-monthday-15")
+        tapTag("custom-every-plus")
+        readout().assertTextEquals("Every 2 months on the 15th")
+        tapTag("custom-done")
+
+        dueLabel().assertTextEquals("Sat 15 Aug, 3:00 PM")
+        compose.onNodeWithTag("repeat-summary").assertTextEquals("Every 2 months on the 15th")
+        tapTag("save-button")
+        assertEquals(Repeat(RepeatUnit.MONTH, 2, monthDay = 15), savedRepeat)
+    }
+
+    /**
+     * Once the date has moved to the 15th, "monthly on the 15th" is exactly what
+     * the Monthly preset means there — so that is the chip that lights.
+     */
+    @Test fun monthly_on_the_date_it_lands_on_is_just_monthly() {
+        showSheet()
+        typeName()
+        openCustom()
+        tapTag("custom-unit-MONTH")
+        tapTag("custom-monthday-15")
+        tapTag("custom-done")
+        dueLabel().assertTextEquals("Sat 15 Aug, 3:00 PM")
+        compose.onNodeWithTag("repeat-summary").assertDoesNotExist()
+        tapTag("save-button")
+        assertEquals(Repeat.MONTHLY, savedRepeat)
+    }
+
+    @Test fun a_month_can_repeat_on_any_weekday_not_just_the_tasks() {
+        showSheet()
+        openCustom()
+        tapTag("custom-unit-MONTH")
+        tapTag("custom-month-by-weekday")
+        // 25 July is the 4th Saturday of its month.
+        readout().assertTextEquals("Monthly on the 4th Saturday")
+        tapTag("custom-ordinal-2")
+        tapTag("custom-weekday-${Calendar.TUESDAY}")
+        readout().assertTextEquals("Monthly on the 2nd Tuesday")
+        tapTag("custom-done")
+
+        dueLabel().assertTextEquals("Tue 11 Aug, 3:00 PM")
+        compose.onNodeWithTag("repeat-summary").assertTextEquals("Monthly on the 2nd Tuesday")
+    }
+
+    @Test fun switching_units_keeps_what_each_one_had() {
+        showSheet()
+        openCustom()
+        tapTag("custom-weekday-${Calendar.MONDAY}")
+        tapTag("custom-unit-MONTH")
+        tapTag("custom-unit-WEEK")
+        readout().assertTextEquals("Weekly on Mon, Sat")
+    }
+
+    @Test fun a_custom_rule_a_preset_can_say_lights_the_preset() {
+        showSheet()
+        typeName()
+        openCustom()
+        tapTag("custom-done")
+        compose.onNodeWithTag("repeat-summary").assertDoesNotExist()
+        tapTag("save-button")
+        assertEquals(Repeat.WEEKLY, savedRepeat)
+    }
+
+    @Test fun dismissing_the_editor_keeps_the_rule_that_was_there() {
+        showSheet()
+        typeName()
+        openCustom()
+        tapTag("custom-weekday-${Calendar.MONDAY}")
+        act(compose.onAllNodesWithContentDescription("Close").onLast())
+        compose.onNodeWithTag("custom-readout").assertDoesNotExist()
+        compose.onNodeWithTag("repeat-summary").assertDoesNotExist()
+        dueLabel().assertTextEquals("Today, 3:00 PM")
+        assertEquals(false, dismissed)
+        tapTag("save-button")
+        assertEquals(Repeat.ONCE, savedRepeat)
+    }
+
+    @Test fun picking_a_date_the_rule_does_not_name_moves_on_to_one_it_does() {
+        showSheet()
+        openCustom()
+        tapTag("custom-weekday-${Calendar.MONDAY}")
+        tapTag("custom-weekday-${Calendar.WEDNESDAY}")
+        tapTag("custom-weekday-${Calendar.SATURDAY}")
+        tapTag("custom-done")
+        dueLabel().assertTextEquals("Mon, 3:00 PM")
+        // Thursday 30 July is neither, so it lands on the Monday after.
+        tapWheel("DAY", 5)
+        dueLabel().assertTextEquals("Mon 3 Aug, 3:00 PM")
+    }
+
+    @Test fun a_preset_follows_the_date_instead() {
+        showSheet()
+        tap("Weekly")
+        tapWheel("DAY", 3)
+        dueLabel().assertTextEquals("Tue, 3:00 PM")
     }
 
     @Test fun the_name_is_trimmed_before_saving() {

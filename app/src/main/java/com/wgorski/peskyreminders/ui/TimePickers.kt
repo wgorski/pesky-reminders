@@ -47,8 +47,8 @@ private val R8 = RoundedCornerShape(8.dp)
 /** Which of the two "…or dial it in" tabs is showing. */
 internal enum class EntryMode { WHEELS, CALENDAR }
 
-/** The minute wheel's only rungs. Nothing here needs the precision of a minute. */
-internal val MINUTE_STEPS = listOf(0, 15, 30, 45)
+/** The minute wheel's rungs, every five minutes — fine enough for "the bus at 8:40". */
+internal val MINUTE_STEPS = (0..55 step 5).toList()
 
 @Composable
 internal fun ModeTabs(mode: EntryMode, onMode: (EntryMode) -> Unit) {
@@ -89,8 +89,8 @@ internal fun ModeTabs(mode: EntryMode, onMode: (EntryMode) -> Unit) {
  *
  * The DAY column only spans a fortnight from today, so a task due further out —
  * or one whose moment has already gone — has no rung to sit on and shows nothing
- * selected. The MIN column is quarter-hours only, so a snoozed task sitting at
- * :07 shows nothing selected there either. The sheet's footer always states the
+ * selected. The MIN column steps in fives, so a snoozed task sitting at :07
+ * shows nothing selected there either. The sheet's footer always states the
  * real due time, so nothing is misreported; the wheel simply cannot point at it.
  */
 @Composable

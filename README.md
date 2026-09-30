@@ -111,13 +111,19 @@ would be sitting on top of the pickers.)
 Pick the time whichever way suits:
 
 - **Quick pick** — three wheels: the day (a fortnight of them), the hour, and
-  quarter-hour minutes. Fastest for "tomorrow morning".
+  the minutes in fives. Fastest for "tomorrow morning".
 - **Calendar** — a month grid for anything further out, with `−1 hr` / `+1 hr` either
   side of the time and shortcuts for *Morning 9:00*, *Noon*, *Evening 7:00*,
   *Night 9:00* and *+15 min*.
 
 Either way, the crimson line above **Repeat** is the truth: *Today, 10:00 AM*. Then
 choose **Once**, **Daily**, **Weekly** or **Monthly**, and hit **Pester me**.
+
+For anything those four can't say there is **Custom**: every N days, weeks, months
+or years — on chosen weekdays ("every 2 weeks on Mon, Fri"), on a chosen date of
+the month ("the 15th", "the last day") or on a chosen weekday of it ("the last
+Tuesday"). The date moves forward to the first day the rule names, the crimson line
+says where it landed, and the rule is spelt out beside **Repeat**.
 
 Changed your mind? Every sheet in the app can be **dragged away by the bar at the
 top** — take hold of the grabber or the title and throw it downwards, and it goes.

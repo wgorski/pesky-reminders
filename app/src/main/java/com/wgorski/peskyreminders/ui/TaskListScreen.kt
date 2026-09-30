@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.wgorski.peskyreminders.DueGroup
+import com.wgorski.peskyreminders.Recurrence
 import com.wgorski.peskyreminders.Task
 import com.wgorski.peskyreminders.TaskTime
 import com.wgorski.peskyreminders.ToggleOutcome
@@ -361,7 +362,7 @@ private fun TaskRow(
                     style = PeskyType.TaskWhen,
                     color = if (overdue) PeskyColors.Overdue else PeskyColors.TextDim,
                 )
-                if (task.repeats) RepeatPill(task.repeat.label)
+                if (task.repeats) RepeatPill(Recurrence.shortLabel(task.repeat, task.slotMillis))
             }
         }
     }

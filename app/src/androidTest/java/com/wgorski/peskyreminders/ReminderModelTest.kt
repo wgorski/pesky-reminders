@@ -1077,7 +1077,8 @@ class ReminderModelTest {
         val task = stored()
         assertEquals("the id doubles as the notification id — it must not move", taskId, task.id)
         assertEquals("Buy oat milk", task.name)
-        assertEquals(Repeat.WEEKLY, task.repeat)
+        // Stored bound to its weekday; on its own date that still means Weekly.
+        assertEquals(Repeat.WEEKLY, Recurrence.normalise(task.repeat, task.dueMillis))
     }
 
     @Test fun moving_a_task_forward_re_arms_the_alarm() {
@@ -1186,6 +1187,6 @@ class ReminderModelTest {
         assertNotNull("the task must come back after a cold start", reloaded)
         assertEquals("Pay the water bill", reloaded!!.name)
         assertEquals(due, reloaded.dueMillis)
-        assertEquals(Repeat.WEEKLY, reloaded.repeat)
+        assertEquals(Repeat.WEEKLY, Recurrence.normalise(reloaded.repeat, reloaded.dueMillis))
     }
 }
