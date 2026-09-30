@@ -36,15 +36,19 @@ Design/plan/verification live in `docs/`. Package: `com.wgorski.peskyreminders`.
   export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
   export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
   ```
-- Emulator AVD name is `pesky` (API 35, google_apis, arm64-v8a). Boot it headless:
-  ```bash
-  emulator -avd pesky -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect
-  ```
-  Then `adb wait-for-device`, poll `getprop sys.boot_completed` until `1`, and
-  `adb shell wm dismiss-keyguard`.
-- **If the emulator process gets killed mid-task, restart it automatically — do not
-  ask first.** Own the emulator in the controlling session so it survives across
-  sub-tasks.
+- **Start the emulator with `scripts/emulator.sh`** — never by hand. It boots the
+  `pesky` AVD (API 35, google_apis, arm64-v8a) headless with **host GPU
+  acceleration** (`-gpu host`, Metal), waits until it can take an install, dismisses
+  the keyguard, and fails loudly if it lands on software rendering. It is idempotent:
+  run it whenever you are not sure the emulator is up — if it is, it says so and
+  exits. It installs the system image if it has gone missing, detaches the emulator
+  so it outlives the call, and logs to `$TMPDIR/pesky-emulator.log`.
+  **Headless is the default and the norm** — verification, screenshots and tests
+  all run without a window. `--window` puts one on screen, and is **only** for when
+  I explicitly ask to see the emulator; never pass it on your own initiative.
+  Switching from headless means `--stop` first. `--stop` shuts it down.
+- **If the emulator process gets killed mid-task, rerun `scripts/emulator.sh` — do
+  not ask first.**
 - Use the Gradle **wrapper** (`./gradlew`, pinned to 8.11.1). Do NOT use the system
   `gradle` (9.5.1) — it cannot configure AGP 8.7.3.
 
@@ -362,6 +366,7 @@ docs/play/                  # Play listing copy, privacy policy, store graphics
 .claude/hooks/              # verify-change.sh — post-edit test run
 .claude/skills/release/     # cut a GitHub release with the APK attached
 .githooks/pre-push          # blocks a push when the JVM suite is red
+scripts/emulator.sh         # boot the emulator (host GPU), or confirm it is up
 ```
 
 ## Android behavior to remember
