@@ -182,11 +182,8 @@ facts worth having here:
 
 - It is `initWith(release)`, **not** debug — the point is to exercise what ships,
   so it inherits release's config: not `debuggable`, no test manifest, release
-  resource processing. **Minification is not part of that**, because release sets
-  `isMinifyEnabled = false` — so a preview pass proves nothing about R8, and
-  saying it does overstates what was verified. `initWith` is still the right shape:
-  turn minification on for release and the preview picks it up for free, which is
-  exactly when you would want a dress rehearsal.
+  resource processing, and **R8 with the same rules** — so a preview pass is
+  evidence about the minified build, which a debug build never is.
 - `applicationIdSuffix = ".preview"` is what makes it a separate app. The
   **namespace is untouched**, so `R`, `BuildConfig` and every
   `Intent(context, ReminderReceiver::class.java)` still resolve.
@@ -284,6 +281,24 @@ same-version APK that must not be. `--install` additionally proves the bundle
 installs, and is opt-in because it has to uninstall the sideloaded build first —
 task list included. Details and two signing gotchas in
 `.claude/skills/release/SKILL.md`.
+
+**Release builds are minified with R8** (`isMinifyEnabled = true`, rules in
+`app/proguard-rules.pro`), so the bundle carries its own mapping file and Play
+de-obfuscates crash reports with nothing extra to upload. R8 mistakes compile
+cleanly and pass the JVM suite, which runs the unminified debug build — they only
+surface at runtime, when a stripped class is first reached. So after any change to
+the rules, a new reflective lookup, or a new manifest entry point, install the
+**release** APK and walk every entry point: launch, the notification's Snooze and
+Done, an alarm firing, and `MY_PACKAGE_REPLACED` (installing over the old build is
+what triggers it). Persisted enum names (`RepeatUnit`) survive renaming — the name
+is the string literal handed to the constructor.
+
+Play will still say **"debug symbols not uploaded"**, and nothing here can stop it.
+The only native code is Compose's `libandroidx.graphics.path.so`, which ships from
+Google already stripped: `ndk { debugSymbolLevel }` extracts nothing ("Unable to
+strip … packaging them as they are") and adds nothing to the bundle. Dropping the
+library would silence the notice at the risk of a crash on older Android versions
+that use it. The preflight script reports it as a warning so nobody chases it.
 
 The upload key lives at `~/.pesky-keys/pesky-upload.jks`, **outside the repo** so
 it cannot be committed; `keystore.properties` (gitignored) points at it. Signing

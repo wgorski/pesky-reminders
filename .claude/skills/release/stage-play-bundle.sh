@@ -172,7 +172,7 @@ section "Warnings Play will raise"
 if grep -q 'isMinifyEnabled = true' app/build.gradle.kts; then
     pass "minification on — the AAB carries its own mapping file, nothing to upload"
 else
-    warn "'No deobfuscation file': isMinifyEnabled = false. Optional; a good second release."
+    warn "'No deobfuscation file': release is no longer minified — CLAUDE.md expects R8 on (Google Play section)."
 fi
 
 SO_COUNT="$(unzip -l "$AAB" | grep -c '\.so$' || true)"

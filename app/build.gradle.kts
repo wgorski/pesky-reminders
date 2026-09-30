@@ -59,7 +59,14 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 shrinks and obfuscates, and the bundle then carries its own
+            // mapping file, so Play can de-obfuscate crash reports without a
+            // separate upload. The preview build below inherits this.
+            isMinifyEnabled = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             signingConfig = signingConfigs.getByName(if (hasUploadKey) "upload" else "debug")
         }
 
@@ -68,12 +75,11 @@ android {
         //
         // `initWith(release)` rather than `debug` on purpose: the point is to test
         // what actually ships, so it inherits release's config — not `debuggable`,
-        // no test manifest, release resource processing. Note that does NOT include
-        // minification, since release sets isMinifyEnabled = false above; a preview
-        // pass is not evidence about R8. Turn minification on there and the preview
-        // inherits it, which is the reason to keep initWith rather than restate the
-        // settings. The three things it changes are the three that stop it
-        // colliding with the real install:
+        // no test manifest, release resource processing, and R8 with the same
+        // rules, so a preview pass is evidence about the minified build. That is
+        // the reason to keep initWith rather than restate the settings. The three
+        // things it changes are the three that stop it colliding with the real
+        // install:
         create("preview") {
             initWith(getByName("release"))
             matchingFallbacks += listOf("release")

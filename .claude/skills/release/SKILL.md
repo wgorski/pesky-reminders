@@ -93,9 +93,13 @@ version inside the 500-character cap. It ends by naming the file to upload and t
 same-version APK that must **not** be.
 
 Anything that would get the upload rejected, or that silently contradicts a claim
-made in `LISTING.md`, is a `FAIL` and exits non-zero. The two warnings it always
-prints — no deobfuscation file, and native symbols for the stripped AndroidX
-`.so` files — are explained in place so nobody chases them.
+made in `LISTING.md`, is a `FAIL` and exits non-zero. Release is minified, so the
+bundle carries its own R8 mapping file and "no deobfuscation file" passes. The one
+warning it always prints — native symbols for Compose's stripped
+`libandroidx.graphics.path.so` — cannot be fixed from here: the library ships
+already stripped, `ndk { debugSymbolLevel }` extracts nothing from it, and removing
+it risks a crash on the older Android versions that call into it. CLAUDE.md's Google
+Play section has the detail.
 
 `--install` is **opt-in because it is destructive**: it generates split APKs with
 `bundletool` and installs them, which means uninstalling the sideloaded
