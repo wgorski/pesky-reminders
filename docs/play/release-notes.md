@@ -119,6 +119,20 @@ A line at the foot reads back what the pair of them add up to.
 
 ---
 
+## 1.2.0 — en-GB
+
+460 of 500 characters.
+
+```
+Repeats can say more now. Next to Once, Daily, Weekly and Monthly there is Custom: every so many days, weeks, months or years — on the weekdays you pick, on a date of the month, or on a weekday of it, such as the last Friday. The reminder moves to the first day the rule names, and the rule is spelt out beside Repeat.
+
+A monthly reminder set on the 31st keeps to the last day of shorter months, then goes back to the 31st.
+
+Minutes can now be picked in fives.
+```
+
+---
+
 ## Format for later releases
 
 Describe what changed for the user, not what changed in the code. The list rows
