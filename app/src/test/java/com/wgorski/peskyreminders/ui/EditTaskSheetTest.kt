@@ -140,8 +140,8 @@ class EditTaskSheetTest {
 
     @Test fun the_sheet_says_it_is_editing() {
         showSheet(weekly)
-        compose.onNodeWithText("Edit pester").assertExists()
-        compose.onNodeWithText("New pester").assertDoesNotExist()
+        compose.onNodeWithText("Edit reminder").assertExists()
+        compose.onNodeWithText("New reminder").assertDoesNotExist()
         compose.onNodeWithText("Save changes").assertExists()
         compose.onNodeWithText("Pester me").assertDoesNotExist()
     }

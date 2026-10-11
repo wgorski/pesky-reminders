@@ -135,7 +135,7 @@ class AddTaskSheetTest {
     // ---- the name field -----------------------------------------------------
 
     /**
-     * A new pester opens ready to type. The name is the one thing the sheet
+     * A new reminder opens ready to type. The name is the one thing the sheet
      * cannot default, so the keyboard is wanted every time — unlike an edit,
      * which is pinned to the opposite in [EditTaskSheetTest].
      */

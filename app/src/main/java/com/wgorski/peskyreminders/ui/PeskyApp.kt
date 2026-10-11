@@ -197,6 +197,10 @@ fun PeskyApp() {
                     nagEnabled = Settings.nagEnabled,
                     nagMinutes = Settings.nagMinutes,
                     swipeSnoozeMinutes = Settings.swipeSnoozeMinutes,
+                    quietEnabled = Settings.quietEnabled,
+                    quietStartMinute = Settings.quietStartMinute,
+                    quietEndMinute = Settings.quietEndMinute,
+                    use24h = use24h,
                     onNagEnabled = {
                         Settings.setNagEnabled(context, it)
                         Reminders.applyNagSettings(context)
@@ -208,6 +212,10 @@ fun PeskyApp() {
                     // Nothing to re-apply: the value is read at the moment a
                     // swipe happens, not armed in advance like a nag.
                     onSwipeSnoozeMinutes = { Settings.setSwipeSnoozeMinutes(context, it) },
+                    // Nor here: the window is checked at the moment of posting.
+                    onQuietEnabled = { Settings.setQuietEnabled(context, it) },
+                    onQuietStartMinute = { Settings.setQuietStartMinute(context, it) },
+                    onQuietEndMinute = { Settings.setQuietEndMinute(context, it) },
                     onDismiss = { settingsOpen = false },
                 )
             }

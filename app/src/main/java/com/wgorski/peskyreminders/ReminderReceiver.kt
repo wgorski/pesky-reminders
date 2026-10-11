@@ -29,14 +29,14 @@ class ReminderReceiver : BroadcastReceiver() {
             // composition to inherit it from.
             //
             // It answers back, which FIRE and NAG do not, because the notification
-            // no longer reappears to speak for itself. Only in text, though — a
-            // swipe met with a chime and a buzz reads as the app arguing with you,
-            // and that judgement is unchanged.
+            // no longer reappears to speak for itself — in the same words as any
+            // other snooze, and only in text: a swipe met with a chime and a buzz
+            // reads as the app arguing with you.
             ReminderContract.ACTION_SWIPED -> {
                 Settings.hydrate(context)
                 val outcome =
                     Reminders.snooze(context, taskId, Settings.swipeSnoozeMinutes)
-                ActionToast.swiped(
+                ActionToast.snoozed(
                     context,
                     outcome,
                     taskId,

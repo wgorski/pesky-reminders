@@ -157,4 +157,69 @@ class SettingsTest {
         val summary = Settings.summarise(true, 5, 5)
         assert(summary.contains("snooze it or tick it off")) { summary }
     }
+
+    // ---- the night window ----------------------------------------------------
+
+    private fun hm(h: Int, m: Int = 0) = h * 60 + m
+
+    @Test fun the_default_window_is_23_to_7() {
+        assertEquals(hm(23), Settings.DEFAULT_QUIET_START)
+        assertEquals(hm(7), Settings.DEFAULT_QUIET_END)
+    }
+
+    @Test fun a_window_across_midnight_holds_its_edges() {
+        val (s, e) = hm(23) to hm(7)
+        assertEquals(false, Settings.isQuietAt(hm(22, 59), s, e))
+        assertEquals(true, Settings.isQuietAt(hm(23), s, e))
+        assertEquals(true, Settings.isQuietAt(0, s, e))
+        assertEquals(true, Settings.isQuietAt(hm(6, 59), s, e))
+        assertEquals(false, Settings.isQuietAt(hm(7), s, e))
+        assertEquals(false, Settings.isQuietAt(hm(12), s, e))
+    }
+
+    @Test fun a_window_inside_one_day_holds_its_edges() {
+        val (s, e) = hm(13) to hm(14, 30)
+        assertEquals(false, Settings.isQuietAt(hm(12, 59), s, e))
+        assertEquals(true, Settings.isQuietAt(hm(13), s, e))
+        assertEquals(true, Settings.isQuietAt(hm(14, 29), s, e))
+        assertEquals(false, Settings.isQuietAt(hm(14, 30), s, e))
+        assertEquals(false, Settings.isQuietAt(hm(23), s, e))
+    }
+
+    /** Never quiet, rather than always: the failure that keeps the app working. */
+    @Test fun an_empty_window_is_never_quiet() {
+        assertEquals(false, Settings.isQuietAt(hm(3), hm(7), hm(7)))
+        assertEquals(false, Settings.isQuietAt(hm(7), hm(7), hm(7)))
+    }
+
+    @Test fun a_step_moves_half_an_hour_and_wraps_round_midnight() {
+        assertEquals(hm(23, 30), Settings.stepQuietMinute(hm(23), 1, hm(7)))
+        assertEquals(0, Settings.stepQuietMinute(hm(23, 30), 1, hm(7)))
+        assertEquals(hm(23, 30), Settings.stepQuietMinute(0, -1, hm(7)))
+    }
+
+    @Test fun a_step_never_lands_on_the_other_end() {
+        assertEquals(hm(7, 30), Settings.stepQuietMinute(hm(6, 30), 1, hm(7)))
+        assertEquals(hm(22, 30), Settings.stepQuietMinute(hm(23, 30), -1, hm(23)))
+    }
+
+    @Test fun a_stored_time_is_snapped_onto_the_half_hour_grid() {
+        assertEquals(hm(23), Settings.coerceQuietMinute(hm(23, 17)))
+        assertEquals(hm(23, 30), Settings.coerceQuietMinute(hm(23, 59)))
+        assertEquals(0, Settings.coerceQuietMinute(-40))
+        assertEquals(hm(23, 30), Settings.coerceQuietMinute(99_999))
+    }
+
+    @Test fun the_summary_names_the_window_only_while_it_is_on() {
+        val base = "Pesky buzzes once and waits. A swipe pushes it back 5 min."
+        assertEquals(
+            "$base Nothing buzzes from 23:00 to 07:00.",
+            Settings.summarise(false, 5, 5, true, hm(23), hm(7), use24h = true),
+        )
+        assertEquals(
+            "$base Nothing buzzes from 10:30 PM to 6:00 AM.",
+            Settings.summarise(false, 5, 5, true, hm(22, 30), hm(6), use24h = false),
+        )
+        assertEquals(base, Settings.summarise(false, 5, 5, false, hm(23), hm(7), true))
+    }
 }

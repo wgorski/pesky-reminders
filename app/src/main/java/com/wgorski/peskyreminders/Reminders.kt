@@ -92,8 +92,8 @@ object Reminders {
     /**
      * The reminder arriving: post it with sound and a buzz.
      *
-     * This is the only path that makes a noise, and the alarm firing is the only
-     * caller that should take it. Everything else that puts the same
+     * This is the only path that makes a noise — outside the night window, see
+     * [quietened] — and the alarm firing is the only caller that should take it. Everything else that puts the same
      * notification back on screen goes through [repost].
      */
     fun notify(context: Context, taskId: Int) =
@@ -115,7 +115,7 @@ object Reminders {
     private fun post(context: Context, taskId: Int, alert: ReminderNotifier.Alert) {
         val task = TaskStore.find(context, taskId) ?: return
         if (task.done) return
-        ReminderNotifier.post(context, task, alert)
+        ReminderNotifier.post(context, task, quietened(context, alert))
         scheduleNextNag(context, taskId)
     }
 
@@ -141,9 +141,27 @@ object Reminders {
         // A buzz but no chime. The nag repeats on an interval the user chose, and
         // a notification sound every few minutes is intolerable; the buzz is what
         // they asked for. See ReminderNotifier.Alert.
-        ReminderNotifier.post(context, task, ReminderNotifier.Alert.BUZZ_ONLY)
+        ReminderNotifier.post(context, task, quietened(context, ReminderNotifier.Alert.BUZZ_ONLY))
         scheduleNextNag(context, taskId)
     }
+
+    /**
+     * [alert], unless the clock is inside the night window from [Settings], in
+     * which case nothing sounds or buzzes. The notification still posts — the
+     * window decides how loud a reminder is, never whether it exists — and the
+     * nag chain keeps running underneath, so the first nag after the window
+     * closes buzzes as usual. Decided here, at the moment of posting, so
+     * [ReminderNotifier.Alert] keeps meaning what kind of event it is.
+     */
+    private fun quietened(
+        context: Context,
+        alert: ReminderNotifier.Alert,
+    ): ReminderNotifier.Alert =
+        if (Settings.isQuietNow(context, System.currentTimeMillis())) {
+            ReminderNotifier.Alert.SILENT
+        } else {
+            alert
+        }
 
     /**
      * Arms the next buzz, or cancels the chain outright when the user has

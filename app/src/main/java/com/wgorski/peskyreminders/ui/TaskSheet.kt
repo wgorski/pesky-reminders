@@ -2,7 +2,6 @@ package com.wgorski.peskyreminders.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -43,6 +41,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.wgorski.peskyreminders.Recurrence
@@ -54,7 +56,7 @@ private val R14 = RoundedCornerShape(14.dp)
 private val R12 = RoundedCornerShape(12.dp)
 
 /**
- * The "New pester" sheet: a name, a time picked on scroll wheels or a calendar,
+ * The "New reminder" sheet: a name, a time picked on scroll wheels or a calendar,
  * and a repeat rule.
  *
  * It opens on a time already chosen ([TaskTime.defaultDue]), so the only thing
@@ -124,7 +126,7 @@ private fun TaskSheet(
     // ever reused for a different one.
     val key = existing?.id
     var name by rememberSaveable(key) { mutableStateOf(existing?.name ?: "") }
-    // Never null: an edit starts on the task's time, a new pester on a sensible
+    // Never null: an edit starts on the task's time, a new reminder on a sensible
     // default. That is what lets the pickers always show a selection, and leaves
     // the name as the only thing Save waits for.
     var dueMillis by rememberSaveable(key) {
@@ -154,7 +156,7 @@ private fun TaskSheet(
 
     Box(Modifier.fillMaxSize()) {
         PeskySheet(
-            title = if (existing == null) "New pester" else "Edit pester",
+            title = if (existing == null) "New reminder" else "Edit reminder",
             onDismiss = onDismiss,
             footer = {
                 SheetFooter(
@@ -170,7 +172,7 @@ private fun TaskSheet(
                 )
             },
         ) {
-            // A new pester opens with the keyboard already up; an edit does not.
+            // A new reminder opens with the keyboard already up; an edit does not.
             NameField(name, autoFocus = existing == null) { name = it }
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -231,7 +233,7 @@ private val RepeatSaver = listSaver<Repeat, Int>(
  *
  * That is a reversal: it used to refuse focus everywhere, because throwing the
  * keyboard up covers the time pickers before the user has decided whether they
- * even want to type. Opening a *new* pester, though, they always do — the name
+ * even want to type. Opening a *new* reminder, though, they always do — the name
  * is the one thing the sheet cannot supply a default for, and it is the only
  * thing Save waits on. Editing keeps the old behaviour, because that is usually
  * a trip to change the time and the pickers should be the thing on screen.
@@ -436,12 +438,6 @@ private fun RepeatRow(
     onCustom: () -> Unit,
 ) {
     val custom = Recurrence.isCustom(repeat)
-    // Custom is the last chip, so at a large font scale it is the one pushed off
-    // the edge. When it is the chosen one, bring it into view.
-    val chipScroll = rememberScrollState()
-    LaunchedEffect(custom) {
-        if (custom) chipScroll.animateScrollTo(chipScroll.maxValue)
-    }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Repeat", style = PeskyType.FieldLabel)
@@ -458,12 +454,10 @@ private fun RepeatRow(
                 )
             }
         }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(chipScroll),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
+        // One line, always: each chip gets its own width plus an equal share of
+        // whatever is left — see FillRow. Content-sized chips scrolled Custom off
+        // the edge at a large font scale; five equal columns clipped "Monthly".
+        FillRow(gap = 5.dp) {
             Repeat.PRESETS.forEach { option ->
                 RepeatChip(option.label, selected = repeat == option) { onRepeat(option) }
             }
@@ -474,8 +468,50 @@ private fun RepeatRow(
     }
 }
 
+/** The largest font scale the repeat chips' labels follow — see [RepeatChip]. */
+private const val MAX_CHIP_FONT_SCALE = 1.3f
+
+/**
+ * Lays its children out on one line across the full width, each at its natural
+ * width plus an equal share of the space left over — CSS's `flex: 1 1 auto`,
+ * which `Modifier.weight` cannot express (weights divide the *whole* width, so a
+ * long word gets no more room than a short one). If even the natural widths do
+ * not fit, every child shrinks by the same proportion instead.
+ */
+@Composable
+private fun FillRow(gap: Dp, content: @Composable () -> Unit) {
+    Layout(content = content, modifier = Modifier.fillMaxWidth()) { measurables, constraints ->
+        val gapPx = gap.roundToPx()
+        val room = constraints.maxWidth - gapPx * (measurables.size - 1).coerceAtLeast(0)
+        val natural = measurables.map { it.maxIntrinsicWidth(constraints.maxHeight) }
+        val total = natural.sum()
+        val widths = if (total <= room) {
+            val share = (room - total) / measurables.size.coerceAtLeast(1)
+            natural.map { it + share }
+        } else {
+            natural.map { it * room / total }
+        }
+        val placeables = measurables.mapIndexed { i, m ->
+            m.measure(Constraints.fixedWidth(widths[i]))
+        }
+        val height = placeables.maxOfOrNull { it.height } ?: 0
+        layout(constraints.maxWidth, height) {
+            var x = 0
+            placeables.forEach {
+                it.placeRelative(x, (height - it.height) / 2)
+                x += it.width + gapPx
+            }
+        }
+    }
+}
+
 @Composable
 private fun RepeatChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    // The label follows the system font scale up to 1.3 and no further. Past that
+    // the five words cannot share one line on a phone-width sheet, and a clipped
+    // "Monthl" helps nobody — so it stops at the largest size that still fits.
+    val fontScale = LocalDensity.current.fontScale
+    val labelSize = (12f * minOf(1f, MAX_CHIP_FONT_SCALE / fontScale)).sp
     Box(
         modifier = Modifier
             .testTag("repeat-$label")
@@ -487,14 +523,18 @@ private fun RepeatChip(label: String, selected: Boolean, onClick: () -> Unit) {
                 if (selected) PeskyColors.Accent else PeskyColors.FieldBorder,
                 CircleShape,
             )
-            .padding(horizontal = 12.dp, vertical = 5.dp),
+            .padding(horizontal = 6.dp, vertical = 5.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             label,
             fontFamily = DmSans,
-            fontSize = 12.sp,
+            fontSize = labelSize,
             fontWeight = FontWeight.SemiBold,
             color = PeskyColors.Text,
+            maxLines = 1,
+            softWrap = false,
+            textAlign = TextAlign.Center,
         )
     }
 }

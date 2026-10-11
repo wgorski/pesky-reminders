@@ -94,7 +94,7 @@ adb shell am start -n com.wgorski.peskyreminders/.MainActivity
 
 Two tiers, and they cover different things.
 
-**Deterministic (JVM, ~12s, no device)** — `app/src/test/`, 329 tests. Robolectric hosts
+**Deterministic (JVM, ~12s, no device)** — `app/src/test/`, 340 tests. Robolectric hosts
 the real composables, and every screen takes `nowMillis` as a parameter instead of
 reading the clock, so each expected label is a fixed string. `TaskTimeTest` covers the
 date maths; `TaskListScreenTest`, `AddTaskSheetTest` and `EditTaskSheetTest` drive
@@ -107,7 +107,7 @@ every control in the UI. Tests pin `TimeZone` to UTC so they pass on any machine
 - They also gate `git push` via `.githooks/pre-push`. Enable once per clone:
   `git config core.hooksPath .githooks`. Bypass with `git push --no-verify`.
 
-**Device (emulator)** — `app/src/androidTest/`, 69 tests. `ReminderModelTest` is the
+**Device (emulator)** — `app/src/androidTest/`, 72 tests. `ReminderModelTest` is the
 real proof of the notification model: it fires the notification's own delete-intent,
 which is exactly what the OS sends on a swipe. Note it calls `TaskStore.clear()`, so
 running it **wipes the task list on the device**.
@@ -345,7 +345,7 @@ app/src/main/java/com/wgorski/peskyreminders/
     TaskSheet.kt        # add AND edit in one: name, repeat, save, the action rows
     CustomRepeatSheet.kt # every N units, on which days — raised over TaskSheet
     TimePickers.kt      # the wheels and the month grid — shared by both paths
-    SettingsSheet.kt    # two cards: nag on/off + interval, and the swipe snooze
+    SettingsSheet.kt    # three cards: nag on/off + interval, swipe snooze, quiet hours
     PeskySlider.kt      # the shared whole-number slider — pure mapping, unit-tested
     ReminderSheet.kt    # Done, 15/30/1h/3h + time-of-day chips, 5 min–72 hr wheel
     ConfirmSheet.kt     # shared "are you sure?" chrome — every delete goes through it
@@ -547,10 +547,14 @@ Two emulator facts, learned the hard way while verifying this:
     "monthly on the 15th" once the date has snapped to the 15th is Monthly — so Custom
     only ever means something the presets cannot express. Two tests pin that.
   - **A custom rule is spelt out on the Repeat label line, not in its chip.** The
-    sentence cannot fit after Monthly; in the chip it would scroll the presets away
-    every time such a task opens. The line already existed, so it costs no height.
-    At a large font scale Custom is the chip pushed off the edge, so the row scrolls
-    to it when it is the chosen one.
+    sentence cannot fit after Monthly; in the chip it would push the row past one
+    line. The line already existed, so it costs no height.
+  - **The five repeat chips always share one line.** `FillRow` in `TaskSheet.kt`
+    gives each chip its natural width plus an equal share of the spare space (CSS
+    `flex: 1 1 auto`, which `Modifier.weight` cannot express — equal weights clipped
+    "Monthly" at font scale 1.3). Their labels follow the font scale only up to
+    `MAX_CHIP_FONT_SCALE` (1.3): beyond that five words cannot fit a phone-width
+    sheet, so the text stops growing rather than clipping. Checked at 440dpi × 1.5.
   - **`"repeat"` on disk is still the label.** `TaskStore` writes the preset name or
     "Custom" beside a `"rule"` object; a task with no `"rule"` is from before rules
     and is bound to its slot on read, which is how existing lists load unchanged.
@@ -600,13 +604,13 @@ Two emulator facts, learned the hard way while verifying this:
     so the statically-held `Toast` cannot retain an Activity and so the toast outlives
     `ReminderActivity.finishAndRemoveTask()`.
   `ACTION_FIRE`/`NAG` stay silent: the app talking to itself is not a user action to
-  confirm. **`ACTION_SWIPED` is the exception that proves the rule** — it says "Nice
-  try — snoozed until 12:08 PM." through `forSwipe`, which is `forSnooze`'s sentence
-  with two words in front of it and `landing()` shared between them so the two cannot
-  punctuate a time differently. It gets a toast precisely *because* the notification
-  no longer reappears to speak for itself: silence there is the app swallowing a
-  reminder without accounting for it. Only in words, though — see the alert levels
-  below; nothing about the swipe chimes or buzzes.
+  confirm. **`ACTION_SWIPED` is the exception that proves the rule** — it says "Snoozed
+  until 12:08 PM." through `ActionToast.snoozed`, the very sentence every other snooze
+  uses, so a swipe reads as the same event rather than a private dialect. It gets a
+  toast precisely *because* the notification no longer reappears to speak for
+  itself: silence there is the app swallowing a reminder without accounting for it.
+  Only in words, though — see the alert levels below; nothing about the swipe chimes
+  or buzzes.
 - **How loudly a post announces itself is `ReminderNotifier.Alert`, and there are three
   levels because there are three different events.** `FULL` (the reminder arriving)
   sounds and buzzes; `BUZZ_ONLY` (the nag) buzzes; `SILENT` (an edit that leaves the
@@ -651,7 +655,7 @@ Two emulator facts, learned the hard way while verifying this:
   only asserted the "Is due …" prefix.
 - **A swipe snoozes, and it adds no logic to `Reminders`.** The delete-intent's branch
   is `Settings.hydrate` → `Reminders.snooze(…, Settings.swipeSnoozeMinutes)` →
-  `ActionToast.swiped`, because `snooze` already did the whole job: cancels the
+  `ActionToast.snoozed`, because `snooze` already did the whole job: cancels the
   (already-gone) notification and the nag chain, keeps a repeater's `anchorMillis` so a
   swiped daily 09:00 does not slide five minutes later every day, and re-arms the alarm
   in the future by construction. Five things about it:
@@ -722,11 +726,25 @@ Two emulator facts, learned the hard way while verifying this:
   Delete acts immediately and drops unsaved edits. There is deliberately no
   mark-as-done row — the list's check circle does that in one tap, and offering it
   twice invited the question of whether it saved the draft on the way past.
-- **The settings sheet is two cards and a sentence, and nothing in it is held back.**
-  Each card is a name, a description, and — below a hairline — a count of minutes
-  picked off `5 / 15 / 30 / Custom`, where Custom opens a slider over the whole
-  range. Both chips and slider commit on the touch, like the reminder sheet's do.
-  Seven things worth keeping:
+- **The night window decides how loud a post is, never whether it happens.**
+  `Settings.quietEnabled` / `quietStartMinute` / `quietEndMinute` (on, 23:00–07:00 by
+  default, half-hour grid) are read by `Reminders.quietened` at the moment of posting,
+  which turns `FULL` and `BUZZ_ONLY` into `SILENT` inside the window. The notification
+  still posts and the nag chain keeps re-arming, so the first nag after the window
+  buzzes; with nagging off, an overnight reminder stays silent. The window maths is
+  pure — `Settings.isQuietAt` (start inclusive, end exclusive, wraps past midnight,
+  start == end is *never* quiet) and `stepQuietMinute` (hops over the other end so the
+  sheet cannot produce an empty window). `ReminderModelTest` turns the window off in
+  `@Before`, or every alert test would depend on the hour it runs at.
+- **The settings sheet is three cards and a sentence, and nothing in it is held back.**
+  The third card is the night window: a switch, then From / To rows of
+  `−30m │ time │ +30m`, the time taking the row's flexible width — a fixed width
+  clipped "11:30 PM" at font scale 1.3. Times come from `TaskTime.formatMinuteOfDay`,
+  which `formatTime` delegates to. The first two cards are each a name, a
+  description, and — below a hairline — a count of minutes picked off
+  `5 / 15 / 30 / Custom`, where Custom opens a slider over the whole range. Both
+  chips and slider commit on the touch, like the reminder sheet's do. Seven things
+  worth keeping:
   - **The typed field is gone, and so is everything that propped it up.** No
     clamp-on-dismiss, no `onMinutesTyped`, no range hint, no `-unit` pluralisation:
     a chip or a slider cannot produce an out-of-range value, so there is nothing to

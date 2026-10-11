@@ -133,6 +133,22 @@ Minutes can now be picked in fives.
 
 ---
 
+## 1.3.0 — en-GB
+
+456 of 500 characters.
+
+```
+Nights are quiet now. Between 23:00 and 07:00 a reminder still arrives, but without a sound or a buzz, and the first nag after the window buzzes as usual. Set the times in half-hour steps in Settings, or turn it off.
+
+Swiping a reminder away now says where it went in the same words as any snooze: "Snoozed until 12:08."
+
+The add and edit sheets are called New reminder and Edit reminder.
+
+The Repeat choices always fit on one line, whatever the text size.
+```
+
+---
+
 ## Format for later releases
 
 Describe what changed for the user, not what changed in the code. The list rows

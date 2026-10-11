@@ -51,6 +51,9 @@ class ReminderModelTest {
     @Before fun seedOneTask() {
         TaskStore.clear(context)
         Settings.clear(context)
+        // The night window is on by default, which would make every alert test
+        // below depend on the hour it runs at. The window's own tests turn it on.
+        Settings.setQuietEnabled(context, false)
         // Ids restart at 1 after a clear, so this drops anything a previous test
         // left armed — without it `nextAlarmClock` reports a stale alarm.
         for (id in 1..20) {
@@ -235,6 +238,55 @@ class ReminderModelTest {
             ReminderContract.QUIET_CHANNEL_ID,
             nagged!!.notification.channelId,
         )
+    }
+
+    /** Sets a one-hour window that either contains the present moment or not. */
+    private fun quietWindow(containingNow: Boolean) {
+        val c = java.util.Calendar.getInstance()
+        val now = c.get(java.util.Calendar.HOUR_OF_DAY) * 60 + c.get(java.util.Calendar.MINUTE)
+        val start = Settings.coerceQuietMinute(now).let {
+            if (containingNow) it else (it + 120) % (24 * 60)
+        }
+        Settings.setQuietEnabled(context, true)
+        Settings.setQuietStartMinute(context, start)
+        Settings.setQuietEndMinute(context, (start + 60) % (24 * 60))
+    }
+
+    /** Inside the night window the reminder still arrives — only quietly. */
+    @Test fun a_reminder_arriving_inside_the_window_is_silent() {
+        quietWindow(containingNow = true)
+        deliver(ReminderContract.ACTION_FIRE)
+        assertEquals(
+            ReminderContract.QUIET_CHANNEL_ID,
+            active()!!.notification.channelId,
+        )
+    }
+
+    @Test fun a_reminder_arriving_outside_the_window_sounds_as_usual() {
+        quietWindow(containingNow = false)
+        deliver(ReminderContract.ACTION_FIRE)
+        assertEquals(
+            ReminderContract.CHANNEL_ID,
+            active()!!.notification.channelId,
+        )
+    }
+
+    /**
+     * A nag inside the window stays silent but keeps the chain alive, so the first
+     * one after the window closes buzzes.
+     */
+    @Test fun a_nag_inside_the_window_keeps_the_chain_running() {
+        deliver(ReminderContract.ACTION_FIRE)
+        quietWindow(containingNow = true)
+        deliver(ReminderContract.ACTION_NAG)
+        val nagged = active()
+        assertNotNull("the nag must leave the notification up", nagged)
+        assertEquals(
+            ReminderContract.QUIET_CHANNEL_ID,
+            nagged!!.notification.channelId,
+        )
+        val minutes = minutesUntilNextAlarm()
+        assertTrue("next nag still armed at ~5 min (was $minutes min)", minutes in 4.0..5.5)
     }
 
     /** Both channels have to exist, or a post to the quiet one is dropped. */

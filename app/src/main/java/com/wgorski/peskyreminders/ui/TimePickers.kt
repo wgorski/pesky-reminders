@@ -332,9 +332,9 @@ private fun DayCell(
 }
 
 @Composable
-private fun StepButton(label: String, onClick: () -> Unit) {
+internal fun StepButton(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .pressable(scale = 0.96f, onClick = onClick)
             .clip(R10)
             .background(PeskyColors.Field)

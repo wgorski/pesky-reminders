@@ -93,8 +93,17 @@ object TaskTime {
 
     fun formatTime(millis: Long, use24h: Boolean): String {
         val c = cal(millis)
-        val h = c.get(Calendar.HOUR_OF_DAY)
-        val m = c.get(Calendar.MINUTE).toString().padStart(2, '0')
+        return formatMinuteOfDay(c.get(Calendar.HOUR_OF_DAY) * 60 + c.get(Calendar.MINUTE), use24h)
+    }
+
+    /**
+     * A wall-clock time with no date attached — "23:00" / "11:00 PM" — written
+     * exactly as [formatTime] writes one, which delegates here so the two cannot
+     * disagree. For settings that name a time of day rather than a moment.
+     */
+    fun formatMinuteOfDay(minuteOfDay: Int, use24h: Boolean): String {
+        val h = minuteOfDay / 60
+        val m = (minuteOfDay % 60).toString().padStart(2, '0')
         if (use24h) return "${h.toString().padStart(2, '0')}:$m"
         val h12 = (h % 12).let { if (it == 0) 12 else it }
         return "$h12:$m ${if (h < 12) "AM" else "PM"}"
@@ -148,7 +157,7 @@ object TaskTime {
     // ---- picking a time -----------------------------------------------------
 
     /**
-     * What the new-pester sheet opens on: **about an hour from now, on the hour**.
+     * What the new-reminder sheet opens on: **about an hour from now, on the hour**.
      *
      * Rounded to the *nearest* hour rather than up or down, so the default is never
      * less than half an hour away (which "in an hour" at 14:59 would otherwise be)

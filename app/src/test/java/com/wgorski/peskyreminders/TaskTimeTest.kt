@@ -60,6 +60,14 @@ class TaskTimeTest {
         assertEquals("12:30 PM", TaskTime.formatTime(at(2026, Calendar.JULY, 25, 12, 30), false))
     }
 
+    @Test fun a_time_of_day_is_written_like_any_other_time() {
+        assertEquals("23:30", TaskTime.formatMinuteOfDay(23 * 60 + 30, use24h = true))
+        assertEquals("11:30 PM", TaskTime.formatMinuteOfDay(23 * 60 + 30, use24h = false))
+        assertEquals("00:00", TaskTime.formatMinuteOfDay(0, use24h = true))
+        assertEquals("12:00 AM", TaskTime.formatMinuteOfDay(0, use24h = false))
+        assertEquals("07:00", TaskTime.formatMinuteOfDay(7 * 60, use24h = true))
+    }
+
     @Test fun full_label_joins_day_and_time() {
         assertEquals(
             "Today, 3:00 PM",

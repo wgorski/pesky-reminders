@@ -17,7 +17,7 @@ each — or the sheet a tap on its body opens, where every other snooze lives.
 It arrives like any other notification — and then it stays.
 
 - **Swipe it away** and it comes back in **five minutes**, with a toast on the way
-  out saying when — "Nice try — snoozed until 12:08 PM." The swipe is the one
+  out saying when — "Snoozed until 12:08 PM." The swipe is the one
   gesture the app answers in words rather than in kind: it does not chime or buzz
   about it, since a swipe met with a noise reads as the app arguing, but the
   notification no longer reappears to speak for itself, so something has to say
@@ -92,7 +92,7 @@ is never padded with empty headings.
 
 <table>
 <tr>
-<td><img width="270" src="docs/screenshots/new-pester.png" alt="The New pester sheet with the quick-pick wheels"></td>
+<td><img width="270" src="docs/screenshots/new-pester.png" alt="The New reminder sheet with the quick-pick wheels"></td>
 <td><img width="270" src="docs/screenshots/calendar-picker.png" alt="The same sheet switched to the calendar view"></td>
 </tr>
 </table>
@@ -143,7 +143,7 @@ them off and clear the done list instead.
 
 ## Settings
 
-The sliders icon in the header opens one sheet, with two things to tune.
+The sliders icon in the header opens one sheet, with three things to tune.
 
 **Keep buzzing** is what makes a reminder you're ignoring buzz again rather than sit
 there quietly; it's on by default, every 5 minutes, and the interval takes anything
@@ -153,6 +153,12 @@ stops making noise about it.
 **Snooze for** is how long a swipe hides a reminder: 5 minutes by default, again
 anything from 1 to 180. There's no switch beside it, because a swipe always snoozes
 now — set it to 1 if you want it back almost as fast as it used to come.
+
+**Do not buzz between** keeps the night quiet: from 23:00 to 07:00 by default, set
+in half-hour steps, and switchable off entirely. Inside the window a reminder still
+lands in the shade, but it neither sounds nor buzzes, and neither does the nag. The
+first nag after the window closes buzzes as usual — so with nagging off, something
+that came due overnight waits silently until you look.
 
 ## Things worth knowing
 

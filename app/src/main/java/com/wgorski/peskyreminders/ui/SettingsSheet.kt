@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,13 +45,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.wgorski.peskyreminders.Settings
+import com.wgorski.peskyreminders.TaskTime
 
 private val Card = RoundedCornerShape(18.dp)
 
 /**
- * Settings. Two things to tune, one card each: whether an ignored reminder keeps
- * buzzing and how often, and how long swiping one away hides it for. A sentence
- * at the foot states what the two of them add up to.
+ * Settings. Three things to tune, one card each: whether an ignored reminder keeps
+ * buzzing and how often, how long swiping one away hides it for, and the night
+ * window in which nothing sounds or buzzes. A sentence at the foot states what
+ * they add up to.
  *
  * Both cards commit on the touch, like the reminder sheet's chips do — there is no
  * Save here and nothing is held back. That is why the sheet no longer has to
@@ -63,9 +66,16 @@ fun SettingsSheet(
     nagEnabled: Boolean,
     nagMinutes: Int,
     swipeSnoozeMinutes: Int,
+    quietEnabled: Boolean,
+    quietStartMinute: Int,
+    quietEndMinute: Int,
+    use24h: Boolean,
     onNagEnabled: (Boolean) -> Unit,
     onNagMinutes: (Int) -> Unit,
     onSwipeSnoozeMinutes: (Int) -> Unit,
+    onQuietEnabled: (Boolean) -> Unit,
+    onQuietStartMinute: (Int) -> Unit,
+    onQuietEndMinute: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
     PeskySheet(
@@ -87,7 +97,9 @@ fun SettingsSheet(
             title = "Keep buzzing",
             description = "Buzz again while a reminder is still sitting there, " +
                 "until you snooze it or tick it off.",
-            trailing = { PeskySwitch(checked = nagEnabled, onCheckedChange = onNagEnabled) },
+            trailing = {
+                PeskySwitch(checked = nagEnabled, tag = "nag-switch", onCheckedChange = onNagEnabled)
+            },
             // Gone rather than greyed out. A disabled row still costs its full
             // height to say nothing, and the switch immediately above it has
             // already said why it is absent.
@@ -126,6 +138,52 @@ fun SettingsSheet(
             },
         )
 
+        SettingCard(
+            title = "Do not buzz between",
+            description = "Reminders still arrive at night, just without a sound " +
+                "or a buzz. The first nag after the window buzzes as usual.",
+            trailing = {
+                PeskySwitch(
+                    checked = quietEnabled,
+                    tag = "quiet-switch",
+                    onCheckedChange = onQuietEnabled,
+                )
+            },
+            // Gone when off, for the same reason as the nag interval above.
+            body = if (!quietEnabled) null else {
+                {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        QuietTimeRow(
+                            label = "From",
+                            tag = "quiet-start",
+                            minute = quietStartMinute,
+                            use24h = use24h,
+                            onStep = { direction ->
+                                onQuietStartMinute(
+                                    Settings.stepQuietMinute(
+                                        quietStartMinute, direction, quietEndMinute,
+                                    )
+                                )
+                            },
+                        )
+                        QuietTimeRow(
+                            label = "To",
+                            tag = "quiet-end",
+                            minute = quietEndMinute,
+                            use24h = use24h,
+                            onStep = { direction ->
+                                onQuietEndMinute(
+                                    Settings.stepQuietMinute(
+                                        quietEndMinute, direction, quietStartMinute,
+                                    )
+                                )
+                            },
+                        )
+                    }
+                }
+            },
+        )
+
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(9.dp),
@@ -138,7 +196,10 @@ fun SettingsSheet(
                 modifier = Modifier.padding(top = 3.dp).size(14.dp),
             )
             Text(
-                Settings.summarise(nagEnabled, nagMinutes, swipeSnoozeMinutes),
+                Settings.summarise(
+                    nagEnabled, nagMinutes, swipeSnoozeMinutes,
+                    quietEnabled, quietStartMinute, quietEndMinute, use24h,
+                ),
                 style = PeskyType.Body,
                 fontSize = 12.5.sp,
                 lineHeight = 18.sp,
@@ -337,6 +398,56 @@ private fun MinutesPicker(
 }
 
 /**
+ * One end of the night window: its name, then the time between half-hour steppers.
+ *
+ * A row each rather than both ends side by side, because a 12-hour "11:30 PM"
+ * between two buttons, twice, does not fit one line at font scale 1.3. The time is
+ * written by [TaskTime.formatMinuteOfDay], the same as
+ * the summary below it.
+ */
+@Composable
+private fun QuietTimeRow(
+    label: String,
+    tag: String,
+    minute: Int,
+    use24h: Boolean,
+    onStep: (direction: Int) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // A floor rather than a fixed width, so "From" and "To" line both times up
+        // without clipping either label at a large font scale.
+        Text(label, style = PeskyType.FieldLabel, modifier = Modifier.widthIn(min = 44.dp))
+        StepButton(
+            label = "−30m",
+            modifier = Modifier.testTag("$tag-earlier"),
+            onClick = { onStep(-1) },
+        )
+        Text(
+            TaskTime.formatMinuteOfDay(minute, use24h),
+            fontFamily = Bricolage,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 18.sp,
+            color = PeskyColors.AccentBright,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            softWrap = false,
+            // The flexible part of the row: a 12-hour "11:30 PM" at font scale 1.3
+            // clipped in a fixed 86dp, and the buttons beside it never grow.
+            modifier = Modifier.weight(1f).testTag("$tag-time"),
+        )
+        StepButton(
+            label = "+30m",
+            modifier = Modifier.testTag("$tag-later"),
+            onClick = { onStep(1) },
+        )
+    }
+}
+
+/**
  * One of the four chips.
  *
  * Both cards offer the same three durations, so a test cannot go by text —
@@ -393,7 +504,7 @@ private fun PresetChip(
  * off. The track carries the colour.
  */
 @Composable
-private fun PeskySwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun PeskySwitch(checked: Boolean, tag: String, onCheckedChange: (Boolean) -> Unit) {
     val track by animateColorAsState(
         targetValue = if (checked) PeskyColors.Accent else PeskyColors.FieldBorder,
         animationSpec = tween(140),
@@ -406,7 +517,7 @@ private fun PeskySwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     )
     Box(
         modifier = Modifier
-            .testTag("nag-switch")
+            .testTag(tag)
             .toggleable(
                 value = checked,
                 role = Role.Switch,

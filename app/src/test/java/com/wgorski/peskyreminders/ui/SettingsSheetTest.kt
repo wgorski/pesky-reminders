@@ -44,20 +44,41 @@ class SettingsSheetTest {
     private val nagEnabled = mutableStateOf(true)
     private val nagMinutes = mutableIntStateOf(5)
     private val swipeMinutes = mutableIntStateOf(5)
+    private val quietEnabled = mutableStateOf(true)
+    private val quietStart = mutableIntStateOf(23 * 60)
+    private val quietEnd = mutableIntStateOf(7 * 60)
     private var dismissed = false
 
-    private fun show(enabled: Boolean = true, minutes: Int = 5, swipe: Int = 5) {
+    private fun show(
+        enabled: Boolean = true,
+        minutes: Int = 5,
+        swipe: Int = 5,
+        quiet: Boolean = true,
+        start: Int = 23 * 60,
+        end: Int = 7 * 60,
+        use24h: Boolean = true,
+    ) {
         nagEnabled.value = enabled
         nagMinutes.intValue = minutes
         swipeMinutes.intValue = swipe
+        quietEnabled.value = quiet
+        quietStart.intValue = start
+        quietEnd.intValue = end
         compose.setContent {
             SettingsSheet(
                 nagEnabled = nagEnabled.value,
                 nagMinutes = nagMinutes.intValue,
                 swipeSnoozeMinutes = swipeMinutes.intValue,
+                quietEnabled = quietEnabled.value,
+                quietStartMinute = quietStart.intValue,
+                quietEndMinute = quietEnd.intValue,
+                use24h = use24h,
                 onNagEnabled = { nagEnabled.value = it },
                 onNagMinutes = { nagMinutes.intValue = it },
                 onSwipeSnoozeMinutes = { swipeMinutes.intValue = it },
+                onQuietEnabled = { quietEnabled.value = it },
+                onQuietStartMinute = { quietStart.intValue = it },
+                onQuietEndMinute = { quietEnd.intValue = it },
                 onDismiss = { dismissed = true },
             )
         }
@@ -126,7 +147,7 @@ class SettingsSheetTest {
     // ---- the summary at the foot ---------------------------------------------
 
     @Test fun the_summary_states_what_the_two_settings_add_up_to() {
-        show(enabled = true, minutes = 5, swipe = 5)
+        show(enabled = true, minutes = 5, swipe = 5, quiet = false)
         compose.onNodeWithTag("settings-summary").assertTextEquals(
             "Pesky buzzes every 5 min until you snooze it or tick it off. " +
                 "A swipe pushes it back 5 min."
@@ -134,7 +155,7 @@ class SettingsSheetTest {
     }
 
     @Test fun the_summary_follows_a_change_rather_than_going_stale() {
-        show(minutes = 5, swipe = 5)
+        show(minutes = 5, swipe = 5, quiet = false)
         tap("swipe-preset-30")
         compose.onNodeWithTag("settings-summary").assertTextEquals(
             "Pesky buzzes every 5 min until you snooze it or tick it off. " +
@@ -143,7 +164,7 @@ class SettingsSheetTest {
     }
 
     @Test fun the_summary_reports_the_quiet_case_too() {
-        show(enabled = false, swipe = 15)
+        show(enabled = false, swipe = 15, quiet = false)
         compose.onNodeWithTag("settings-summary")
             .assertTextEquals("Pesky buzzes once and waits. A swipe pushes it back 15 min.")
     }
@@ -365,5 +386,67 @@ class SettingsSheetTest {
         compose.waitForIdle()
         assertEquals(12, nagMinutes.intValue)
         assertEquals(20, swipeMinutes.intValue)
+    }
+
+    // ---- the night window ----------------------------------------------------
+
+    private fun quietSwitchState(): ToggleableState =
+        compose.onNodeWithTag("quiet-switch")
+            .fetchSemanticsNode()
+            .config[SemanticsProperties.ToggleableState]
+
+    @Test fun the_window_opens_on_its_defaults() {
+        show()
+        compose.onNodeWithText("Do not buzz between").assertIsDisplayed()
+        assertEquals(ToggleableState.On, quietSwitchState())
+        compose.onNodeWithTag("quiet-start-time").assertTextEquals("23:00")
+        compose.onNodeWithTag("quiet-end-time").assertTextEquals("07:00")
+    }
+
+    @Test fun the_window_follows_a_12_hour_clock() {
+        show(use24h = false)
+        compose.onNodeWithTag("quiet-start-time").assertTextEquals("11:00 PM")
+        compose.onNodeWithTag("quiet-end-time").assertTextEquals("7:00 AM")
+    }
+
+    @Test fun the_steppers_move_each_end_by_half_an_hour() {
+        show()
+        tap("quiet-start-earlier")
+        assertEquals(22 * 60 + 30, quietStart.intValue)
+        compose.onNodeWithTag("quiet-start-time").assertTextEquals("22:30")
+
+        tap("quiet-end-later")
+        assertEquals(7 * 60 + 30, quietEnd.intValue)
+        compose.onNodeWithTag("quiet-end-time").assertTextEquals("07:30")
+        assertEquals(22 * 60 + 30, quietStart.intValue)
+    }
+
+    @Test fun a_stepper_hops_over_the_other_end() {
+        show(start = 6 * 60 + 30, end = 7 * 60)
+        tap("quiet-start-later")
+        assertEquals(7 * 60 + 30, quietStart.intValue)
+    }
+
+    @Test fun switching_the_window_off_takes_the_times_away() {
+        show()
+        tap("quiet-switch")
+        assertEquals(false, quietEnabled.value)
+        assertEquals(0, countTagged("quiet-start-time"))
+        assertEquals(0, countTagged("quiet-end-later"))
+        // and leaves the nag switch alone
+        assertEquals(ToggleableState.On, switchState())
+    }
+
+    @Test fun the_summary_names_the_window_while_it_is_on() {
+        show(enabled = true, minutes = 5, swipe = 5)
+        compose.onNodeWithTag("settings-summary").assertTextEquals(
+            "Pesky buzzes every 5 min until you snooze it or tick it off. " +
+                "A swipe pushes it back 5 min. Nothing buzzes from 23:00 to 07:00."
+        )
+        tap("quiet-start-later")
+        compose.onNodeWithTag("settings-summary").assertTextEquals(
+            "Pesky buzzes every 5 min until you snooze it or tick it off. " +
+                "A swipe pushes it back 5 min. Nothing buzzes from 23:30 to 07:00."
+        )
     }
 }
